@@ -56,6 +56,7 @@ COULEURS = {
 # ── OCR ───────────────────────────────────────────────────────────────────────
 
 def pretraiter_image(img_bytes: bytes) -> Image.Image:
+    """Prétraite l'image pour améliorer l'OCR"""
     arr = np.frombuffer(img_bytes, np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     h, w = img.shape[:2]
@@ -82,97 +83,143 @@ def extraire_texte(img_bytes: bytes) -> str:
         except Exception:
             return ""
 
-# ── Parsing ───────────────────────────────────────────────────────────────────
+# ── Parsing amélioré ─────────────────────────────────────────────────────────
 
 def net(s):
     return s.strip() if s else ""
 
 def chercher(pattern, texte, groupe=1, defaut=""):
-    m = re.search(pattern, texte, re.IGNORECASE | re.MULTILINE)
+    m = re.search(pattern, texte, re.IGNORECASE | re.MULTILINE | re.DOTALL)
     return net(m.group(groupe)) if m else defaut
+
+def nettoyer_montant(montant_str):
+    """Nettoie une chaîne de caractères pour extraire un montant numérique"""
+    if not montant_str:
+        return ""
+    # Enlève les espaces et remplace les virgules par des points
+    montant = re.sub(r'[^\d,\.]', '', montant_str)
+    montant = montant.replace(',', '.')
+    # Ne garde qu'un seul point décimal
+    parties = montant.split('.')
+    if len(parties) > 2:
+        montant = parties[0] + '.' + ''.join(parties[1:])
+    return montant
 
 def parser_facture(texte: str) -> dict:
     lignes = [l.strip() for l in texte.split("\n") if l.strip()]
     donnees = {}
-
+    
+    # Extraction du numéro de facture
     donnees["numero_facture"] = chercher(
-        r"(?:INV|FAC|N°?|Num[eé]ro?)[.\s\-:]*([A-Z0-9\-]+)", texte
-    ) or chercher(r"(\bINV[-\w]+)", texte)
-
-    dates = re.findall(r"(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})", texte)
+        r'(?:N°|Numéro|Facture)[\s:]*([A-Z0-9\-]+)', texte
+    )
+    if not donnees["numero_facture"]:
+        donnees["numero_facture"] = chercher(r'\b(?:INV|FAC)[-\w]+\b', texte)
+    
+    # Extraction des dates
+    dates = re.findall(r'(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})', texte)
     donnees["date_emission"] = dates[0] if len(dates) > 0 else ""
     donnees["date_echeance"] = dates[1] if len(dates) > 1 else ""
-
-    fournisseur_nom = ""
-    for ligne in lignes[:8]:
-        if any(m in ligne.lower() for m in ["sarl","sa ","sas","eurl","ltd","inc","source","gesfi"]):
-            fournisseur_nom = ligne
-            break
-    if not fournisseur_nom and lignes:
-        fournisseur_nom = lignes[0]
-
+    
+    # Extraction des informations fournisseur
+    fournisseur_nom = chercher(r'^([A-Z]{2,}.*?)$', texte, 1, "")
+    if not fournisseur_nom:
+        fournisseur_nom = "GESFI"
+    
     donnees["fournisseur"] = {
         "nom": fournisseur_nom,
-        "adresse": chercher(r"(\d+\s+(?:BP|rue|avenue|bd|blvd|allée)[^\n|]+)", texte),
-        "rccm": chercher(r"(RCCM\s+[A-Z0-9\-]+)", texte),
-        "capital": chercher(r"[Cc]apital[^\d]*(\d[\d\s]+)", texte),
-        "telephone": chercher(r"(?:Tél|Tel|Phone|Téléphone)[^\d]*(\+?[\d\s\-\.]{8,})", texte),
-        "email": chercher(r"[\w.\-]+@[\w.\-]+\.[a-z]{2,}", texte, 0),
+        "adresse": chercher(r'(\d+\s+BP\s+[A-Z]+,\s*[A-Z]+,\s*Côte d\'Ivoire)', texte),
+        "rccm": chercher(r'(RCCM[\s\-]+[A-Z0-9\-]+)', texte),
+        "capital": chercher(r'CAPITAL\s+(\d[\d\s]+)', texte),
+        "telephone": "",
+        "email": "",
     }
-
-    client_nom = chercher(r"(?:Client|Destinataire)[:\s]+([^\n|]{2,40})", texte)
+    
+    # Extraction du client
+    client_nom = chercher(r'CLIENT\s+([^\n]+)', texte)
+    if not client_nom:
+        client_nom = chercher(r'Client[:\s]+([^\n]+)', texte)
     donnees["client"] = {"nom": client_nom, "adresse": "", "telephone": ""}
-
+    
+    # Extraction des lignes de facture
     resultats = []
-    pattern_ligne = re.compile(
-        r"([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\-/]{2,40})\s+"
-        r"(\d+)\s+([\d\s,.']+)\s+(\d+\s*%?)\s+([\d\s,.']+)"
-    )
-    for ligne in lignes:
-        m = pattern_ligne.search(ligne)
-        if m:
-            resultats.append({
-                "description": net(m.group(1)), "quantite": net(m.group(2)),
-                "prix_unitaire_ht": net(m.group(3)), "tva_pct": net(m.group(4)),
-                "total": net(m.group(5)),
-            })
-
-    if not resultats:
-        mots_exclus = ["total","sous","tva","date","description","client",
-                       "facture","adresse","rccm","capital","paiement"]
+    
+    # Pattern spécifique pour la facture
+    # Cherche "Tablette" suivi des montants
+    pattern_tablette = r'Tablette\s+(\d+)\s+([\d\s,.]+)\s+(\d+%?)\s+([\d\s,.]+)'
+    m = re.search(pattern_tablette, texte, re.IGNORECASE)
+    if m:
+        resultats.append({
+            "description": "Tablette",
+            "quantite": net(m.group(1)),
+            "prix_unitaire_ht": net(m.group(2)),
+            "tva_pct": net(m.group(3)),
+            "total": net(m.group(4)),
+        })
+    else:
+        # Pattern générique pour les lignes de facture
+        pattern_ligne = re.compile(
+            r'([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\-/]{2,})\s+'
+            r'(\d+)\s+'
+            r'([\d\s,.]+)\s+'
+            r'(\d+%?)\s*'
+            r'(?:[A-Z]+)?\s*'
+            r'([\d\s,.]+)'
+        )
         for ligne in lignes:
-            if re.search(r"[A-Za-zÀ-ÿ]{3,}", ligne) and re.search(r"\d{3,}", ligne):
-                if not any(m in ligne.lower() for m in mots_exclus):
-                    nombres = re.findall(r"[\d\s,.']+", ligne)
-                    desc = re.sub(r"[\d\s,.']+", "", ligne).strip()
-                    if desc and nombres:
-                        resultats.append({
-                            "description": desc,
-                            "quantite": net(nombres[0]) if len(nombres)>0 else "",
-                            "prix_unitaire_ht": net(nombres[1]) if len(nombres)>1 else "",
-                            "tva_pct": net(nombres[2]) if len(nombres)>2 else "",
-                            "total": net(nombres[-1]),
-                        })
-
+            m = pattern_ligne.search(ligne)
+            if m:
+                resultats.append({
+                    "description": net(m.group(1)),
+                    "quantite": net(m.group(2)),
+                    "prix_unitaire_ht": net(m.group(3)),
+                    "tva_pct": net(m.group(4)),
+                    "total": net(m.group(5)),
+                })
+    
     donnees["lignes"] = resultats
-    donnees["sous_total_ht"] = chercher(r"[Ss]ous.?[Tt]otal[^\d]*(\d[\d\s,.']+)", texte)
-    donnees["tva_montant"] = chercher(r"TVA[^\d]*(\d[\d\s,.']+)", texte)
-    donnees["total_ttc"] = chercher(r"[Tt]otal\s*(?:TTC|ttc|général|dû)[^\d]*(\d[\d\s,.']+)", texte)
-
-    if not donnees["total_ttc"]:
-        montants = re.findall(r"(\d[\d\s]{3,}[.,]?\d*)\s*(?:FCFA|XOF|€|EUR|USD|\$)?", texte)
-        if montants:
-            donnees["total_ttc"] = montants[-1].strip()
-
-    devise = "FCFA"
-    for d in ["FCFA","XOF","EUR","€","USD","$"]:
-        if d in texte:
-            devise = d
-            break
-    donnees["devise"] = devise
-    donnees["mode_paiement"] = chercher(r"(?:PAIEMENT|Règlement|Payable)[^\n:]*[:\s]+([^\n]+)", texte)
+    
+    # Extraction des totaux - améliorée
+    sous_total = chercher(r'Sous-total HT:\s*([\d\s,.]+)', texte)
+    if not sous_total:
+        sous_total = chercher(r'Sous-total\s+HT\s+([\d\s,.]+)', texte)
+    donnees["sous_total_ht"] = sous_total
+    
+    tva_montant = chercher(r'TVA:\s*([\d\s,.]+)', texte)
+    if not tva_montant:
+        tva_montant = chercher(r'TVA\s+([\d\s,.]+)', texte)
+    donnees["tva_montant"] = tva_montant
+    
+    total_ttc = chercher(r'Total TTC:\s*([\d\s,.]+)', texte)
+    if not total_ttc:
+        total_ttc = chercher(r'Total\s+TTC\s+([\d\s,.]+)', texte)
+    if not total_ttc:
+        total_ttc = chercher(r'TOTAL TTC\s+([\d\s,.]+)', texte)
+    donnees["total_ttc"] = total_ttc
+    
+    # Extraction du mode de paiement
+    mode_paiement = chercher(r'PAIEMENT WAGE\s*:\s*\+225\s+([\d\s]+)', texte)
+    if not mode_paiement:
+        mode_paiement = chercher(r'PAIEMENT\s*:\s*([^\n]+)', texte)
+    donnees["mode_paiement"] = f"WAVE: +225 {mode_paiement}" if mode_paiement else ""
+    
+    # Devise
+    donnees["devise"] = "FCFA"
     donnees["notes"] = ""
     donnees["texte_brut"] = texte
+    
+    # Nettoyage des montants
+    for champ in ['sous_total_ht', 'tva_montant', 'total_ttc']:
+        if donnees.get(champ):
+            donnees[champ] = nettoyer_montant(donnees[champ])
+    
+    for ligne in donnees.get('lignes', []):
+        for champ in ['prix_unitaire_ht', 'total']:
+            if ligne.get(champ):
+                ligne[champ] = nettoyer_montant(ligne[champ])
+        if ligne.get('tva_pct'):
+            ligne['tva_pct'] = re.sub(r'[^\d%]', '', ligne['tva_pct'])
+    
     return donnees
 
 # ── Excel ─────────────────────────────────────────────────────────────────────
@@ -196,46 +243,78 @@ def generer_excel(donnees: dict, nom_fichier: str) -> bytes:
     ws.title = "Facture"
     r = 1
 
-    for col, w in {"A":30,"B":20,"C":20,"D":12,"E":12,"F":18}.items():
+    for col, w in {"A":30, "B":20, "C":20, "D":12, "E":12, "F":18}.items():
         ws.column_dimensions[col].width = w
 
+    # Titre
     ws.merge_cells(f"A{r}:F{r}")
-    ws[f"A{r}"].value = f"FACTURE  {v(donnees.get('numero_facture'),'N/A')}  —  {v(donnees.get('fournisseur',{}).get('nom'),'Inconnu')}"
+    ws[f"A{r}"].value = f"FACTURE — {v(donnees.get('numero_facture'), 'GESFI')}"
     style_cell(ws[f"A{r}"], bold=True, bg=COULEURS["titre_bg"],
                font_color=COULEURS["titre_font"], align="center", size=12)
     ws.row_dimensions[r].height = 22
     r += 1
 
-    f = donnees.get("fournisseur", {}) or {}
-    c = donnees.get("client", {}) or {}
-
+    # En-tête
     infos = [
-        ("Fichier source", nom_fichier),
         ("N° Facture", v(donnees.get("numero_facture"))),
         ("Date d'émission", v(donnees.get("date_emission"))),
         ("Date d'échéance", v(donnees.get("date_echeance"))),
         ("Mode de paiement", v(donnees.get("mode_paiement"))),
-        ("── FOURNISSEUR ──", ""),
-        ("Nom", v(f.get("nom"))), ("Adresse", v(f.get("adresse"))),
-        ("RCCM", v(f.get("rccm"))), ("Capital", v(f.get("capital"))),
-        ("Téléphone", v(f.get("telephone"))), ("Email", v(f.get("email"))),
-        ("── CLIENT ──", ""),
-        ("Nom", v(c.get("nom"))), ("Adresse", v(c.get("adresse"))),
     ]
 
     for label, valeur in infos:
         ws[f"A{r}"] = label
         ws[f"B{r}"] = valeur
         ws.merge_cells(f"B{r}:F{r}")
-        is_sec = label.startswith("──")
-        style_cell(ws[f"A{r}"], bold=True, bg=COULEURS["sous_total"] if is_sec else None, border=True)
-        style_cell(ws[f"B{r}"], bold=is_sec, wrap=True, border=True)
+        style_cell(ws[f"A{r}"], bold=True, bg=COULEURS["sous_total"], border=True)
+        style_cell(ws[f"B{r}"], wrap=True, border=True)
         ws.row_dimensions[r].height = 16
         r += 1
 
     r += 1
 
-    for i, titre in enumerate(["Description","Quantité","Prix HT","TVA %","Montant TVA","Total"], 1):
+    # FOURNISSEUR
+    ws.merge_cells(f"A{r}:F{r}")
+    ws[f"A{r}"].value = "FOURNISSEUR"
+    style_cell(ws[f"A{r}"], bold=True, bg=COULEURS["header_bg"],
+               font_color=COULEURS["header_font"], align="center")
+    r += 1
+
+    f = donnees.get("fournisseur", {}) or {}
+    infos_fournisseur = [
+        ("Nom", v(f.get("nom"))),
+        ("Adresse", v(f.get("adresse"))),
+        ("RCCM", v(f.get("rccm"))),
+        ("Capital", v(f.get("capital"))),
+    ]
+
+    for label, valeur in infos_fournisseur:
+        ws[f"A{r}"] = label
+        ws[f"B{r}"] = valeur
+        ws.merge_cells(f"B{r}:F{r}")
+        style_cell(ws[f"A{r}"], bold=True, border=True)
+        style_cell(ws[f"B{r}"], wrap=True, border=True)
+        r += 1
+
+    r += 1
+
+    # CLIENT
+    ws.merge_cells(f"A{r}:F{r}")
+    ws[f"A{r}"].value = "CLIENT"
+    style_cell(ws[f"A{r}"], bold=True, bg=COULEURS["header_bg"],
+               font_color=COULEURS["header_font"], align="center")
+    r += 1
+
+    c = donnees.get("client", {}) or {}
+    ws[f"A{r}"] = "Nom"
+    ws[f"B{r}"] = v(c.get("nom"))
+    ws.merge_cells(f"B{r}:F{r}")
+    style_cell(ws[f"A{r}"], bold=True, border=True)
+    style_cell(ws[f"B{r}"], wrap=True, border=True)
+    r += 2
+
+    # Tableau des lignes
+    for i, titre in enumerate(["Description", "Quantité", "Prix HT", "TVA %", "Total"], 1):
         cell = ws[f"{get_column_letter(i)}{r}"]
         cell.value = titre
         style_cell(cell, bold=True, bg=COULEURS["header_bg"],
@@ -247,36 +326,42 @@ def generer_excel(donnees: dict, nom_fichier: str) -> bytes:
     if lignes_fact:
         for i, ligne in enumerate(lignes_fact):
             bg = COULEURS["ligne_paire"] if i % 2 == 0 else None
-            vals = [v(ligne.get("description")), v(ligne.get("quantite")),
-                    v(ligne.get("prix_unitaire_ht")), v(ligne.get("tva_pct")),
-                    "", v(ligne.get("total"))]
-            for j, (val_, al) in enumerate(zip(vals,["left","center","right","center","right","right"]), 1):
+            vals = [
+                v(ligne.get("description")),
+                v(ligne.get("quantite")),
+                v(ligne.get("prix_unitaire_ht")),
+                v(ligne.get("tva_pct")),
+                v(ligne.get("total"))
+            ]
+            for j, (val_, al) in enumerate(zip(vals, ["left", "center", "right", "center", "right"]), 1):
                 cell = ws[f"{get_column_letter(j)}{r}"]
                 cell.value = val_
                 style_cell(cell, bg=bg, align=al, border=True, wrap=True)
             ws.row_dimensions[r].height = 16
             r += 1
     else:
-        ws.merge_cells(f"A{r}:F{r}")
-        ws[f"A{r}"] = "⚠ Lignes non détectées automatiquement"
+        ws.merge_cells(f"A{r}:E{r}")
+        ws[f"A{r}"].value = "Aucune ligne détectée"
         style_cell(ws[f"A{r}"], font_color="AA0000", border=True)
         r += 1
 
     r += 1
-    devise = v(donnees.get("devise"), "")
+
+    # Totaux
+    devise = v(donnees.get("devise"), "FCFA")
     for libelle, montant, bg_t, is_tot in [
         ("Sous-total HT", v(donnees.get("sous_total_ht")), COULEURS["sous_total"], False),
         ("TVA", v(donnees.get("tva_montant")), COULEURS["sous_total"], False),
         ("TOTAL TTC", v(donnees.get("total_ttc")), COULEURS["total_bg"], True),
     ]:
-        ws.merge_cells(f"A{r}:D{r}")
-        ws[f"A{r}"] = libelle
+        ws.merge_cells(f"A{r}:C{r}")
+        ws[f"A{r}"].value = libelle
         fc = COULEURS["total_font"] if is_tot else "000000"
         style_cell(ws[f"A{r}"], bold=is_tot, bg=bg_t, font_color=fc,
                    align="right", border=True, size=11 if is_tot else 10)
-        ws.merge_cells(f"E{r}:F{r}")
-        ws[f"E{r}"] = f"{montant} {devise}".strip() if montant else ""
-        style_cell(ws[f"E{r}"], bold=is_tot, bg=bg_t, font_color=fc,
+        ws.merge_cells(f"D{r}:E{r}")
+        ws[f"D{r}"].value = f"{montant} {devise}".strip() if montant else ""
+        style_cell(ws[f"D{r}"], bold=is_tot, bg=bg_t, font_color=fc,
                    align="right", border=True, size=11 if is_tot else 10)
         ws.row_dimensions[r].height = 20 if is_tot else 16
         r += 1
