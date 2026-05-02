@@ -8,18 +8,19 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import Flask, render_template, request, jsonify, send_file, after_this_request
+from flask import Flask, render_template, request, jsonify, send_file
 
 try:
     import pytesseract
     from PIL import Image
     import cv2
     import numpy as np
-    from openpyxl import Workbook, load_workbook
+    from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 except ImportError as e:
     print(f"❌ Dépendance manquante: {e}")
+    print("Lance: pip install flask pytesseract pillow opencv-python openpyxl")
     sys.exit(1)
 
 app = Flask(__name__)
@@ -43,6 +44,19 @@ COULEURS_GESFI = {
     "border": "#DEE2E6",
 }
 
+# Couleurs pour Excel (sans # pour openpyxl)
+COULEURS_EXCEL = {
+    "header_bg": "1B3A5C",
+    "header_font": "FFFFFF",
+    "titre_bg": "2E5A88",
+    "titre_font": "FFFFFF",
+    "ligne_paire": "F0F4F8",
+    "total_bg": "1B3A5C",
+    "total_font": "FFFFFF",
+    "sous_total": "E8F0F8",
+    "border": "DEE2E6",
+}
+
 CHEMINS_TESSERACT = [
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
@@ -62,19 +76,6 @@ def configurer_tesseract():
         return False
 
 TESSERACT_OK = configurer_tesseract()
-
-# Couleurs pour Excel
-COULEURS_EXCEL = {
-    "header_bg": COULEURS_GESFI["primary"],
-    "header_font": COULEURS_GESFI["text_light"],
-    "titre_bg": COULEURS_GESFI["secondary"],
-    "titre_font": COULEURS_GESFI["text_light"],
-    "ligne_paire": "#F0F4F8",
-    "total_bg": COULEURS_GESFI["primary"],
-    "total_font": COULEURS_GESFI["text_light"],
-    "sous_total": "#E8F0F8",
-    "border": COULEURS_GESFI["border"],
-}
 
 # ── Prétraitement image ───────────────────────────────────────────────────────
 
@@ -329,7 +330,7 @@ def generer_excel_structure(donnees: dict, nom_fichier: str) -> bytes:
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = Font(bold=True, color=COULEURS_EXCEL["header_font"], size=11)
-        cell.fill = PatternFill("solid", start_color=COULEURS_EXCEL["header_bg"].replace("#", ""))
+        cell.fill = PatternFill("solid", start_color=COULEURS_EXCEL["header_bg"])
         cell.alignment = Alignment(horizontal="center", vertical="center")
     
     ws.column_dimensions["A"].width = 30
