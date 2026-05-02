@@ -1,195 +1,411 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactureOCR — Extraction intelligente</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GESFI GROUP - Extracteur Batch OCR (100 fichiers)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1B3A5C 0%, #2E5A88 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1B3A5C 0%, #2E5A88 100%);
+            color: white;
+            padding: 30px 40px;
+            position: relative;
+        }
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .logo-text {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .logo-text span { color: #D4AF37; }
+        .group-badge {
+            font-size: 14px;
+            color: #D4AF37;
+            border-left: 2px solid #D4AF37;
+            padding-left: 10px;
+        }
+        .status-badge {
+            background: rgba(212,175,55,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: 1px solid #D4AF37;
+        }
+        .status-badge.success { background: rgba(40,167,69,0.2); border-color: #28A745; }
+        .content { padding: 40px; }
+        
+        .drop-zone {
+            border: 3px dashed #DEE2E6;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #F8F9FA;
+            margin-bottom: 30px;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #D4AF37;
+            background: #FFF8F0;
+        }
+        .drop-zone-icon { font-size: 48px; margin-bottom: 15px; }
+        .btn-upload {
+            background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
+            color: #1B3A5C;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .file-list {
+            background: #F8F9FA;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #DEE2E6;
+            font-size: 13px;
+        }
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            background: #DEE2E6;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #28A745, #D4AF37);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 10px;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .results-table th, .results-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #DEE2E6;
+        }
+        .results-table th {
+            background: #1B3A5C;
+            color: white;
+        }
+        .results-table tr:hover { background: #FFF8F0; }
+        .badge-success { color: #28A745; font-weight: bold; }
+        .badge-error { color: #DC3545; font-weight: bold; }
+        .btn-download {
+            background: linear-gradient(135deg, #28A745 0%, #218838 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .btn-download:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #F8F9FA;
+            border-radius: 10px;
+        }
+        .stat-card {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 10px;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1B3A5C;
+        }
+        .footer {
+            background: #1B3A5C;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+        }
+        @media (max-width: 768px) {
+            .content { padding: 20px; }
+            .header-content { flex-direction: column; }
+        }
+    </style>
 </head>
 <body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-text">GESFI<span>GROUP</span></div>
+                    <div class="group-badge">EXTRACTEUR BATCH OCR (100 FICHIERS MAX)</div>
+                </div>
+                <div class="status-badge {% if tesseract_ok %}success{% else %}error{% endif %}">
+                    {% if tesseract_ok %}✅ Tesseract actif{% else %}❌ Tesseract non installé{% endif %}
+                </div>
+            </div>
+        </div>
 
-  {% if not tesseract_ok %}
-  <div class="alert-banner">
-    ⚠ Tesseract OCR non détecté sur ce serveur. Installe-le pour activer l'extraction.
-  </div>
-  {% endif %}
+        <div class="content">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">📦</div>
+                <div class="drop-zone-text">Glissez-déposez jusqu'à 100 factures ici</div>
+                <div class="drop-zone-subtext">Formats supportés: JPG, PNG, BMP, TIFF, WEBP</div>
+                <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
+                    Sélectionner des fichiers
+                </button>
+            </div>
 
-  <header class="header">
-    <div class="logo">
-      <span class="logo-icon">▦</span>
-      <span class="logo-text">FactureOCR</span>
+            <div id="fileList" class="file-list" style="display:none;">
+                <h4>📁 Fichiers sélectionnés (<span id="fileCount">0</span>/100)</h4>
+                <div id="fileListContainer"></div>
+            </div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="progressText" style="margin-top: 10px; text-align: center;"></p>
+            </div>
+
+            <div id="resultsSection" style="display:none;">
+                <div class="stats" id="stats"></div>
+                <table class="results-table" id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Nom du fichier</th>
+                            <th>Type détecté</th>
+                            <th>Statut</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+                <button class="btn-download" id="downloadAllBtn">📥 Télécharger tous les fichiers Excel (ZIP)</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>© 2026 GESFI GROUP - Traitement batch jusqu'à 100 factures | OCR intelligent Vente/Achat</p>
+        </div>
     </div>
-    <nav class="nav-pills">
-      <span class="pill active">Extraction</span>
-      <a href="#comment" class="pill">Comment ça marche</a>
-    </nav>
-  </header>
 
-  <main class="main">
+    <script>
+        let selectedFiles = [];
+        let processingResults = null;
 
-    <!-- Hero -->
-    <section class="hero">
-      <div class="hero-tag">100% local · sans API · sans abonnement</div>
-      <h1 class="hero-title">Transforme tes<br><em>factures</em> en Excel</h1>
-      <p class="hero-sub">Glisse une image de facture — le moteur OCR extrait tous les champs et génère un fichier Excel structuré instantanément.</p>
-    </section>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const fileListContainer = document.getElementById('fileListContainer');
+        const fileCountSpan = document.getElementById('fileCount');
 
-    <!-- Upload zone -->
-    <section class="upload-section">
-      <div class="upload-zone" id="dropZone">
-        <div class="upload-icon">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect x="8" y="8" width="32" height="32" rx="4" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
-            <path d="M24 32V20M18 26l6-6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <p class="upload-label">Glisse ta facture ici</p>
-        <p class="upload-sub">ou</p>
-        <label class="btn-upload" for="fileInput">Choisir un fichier</label>
-        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.webp,.gif" hidden />
-        <p class="upload-formats">JPG · PNG · BMP · TIFF · WEBP</p>
-      </div>
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = Array.from(e.dataTransfer.files);
+            addFiles(files);
+        });
 
-      <!-- Preview -->
-      <div class="preview-box" id="previewBox" style="display:none">
-        <img id="previewImg" src="" alt="Aperçu" />
-        <button class="btn-remove" id="btnRemove">✕ Changer</button>
-      </div>
-    </section>
+        fileInput.addEventListener('change', (e) => {
+            addFiles(Array.from(e.target.files));
+        });
 
-    <!-- Bouton analyser -->
-    <div class="action-row">
-      <button class="btn-primary" id="btnAnalyser" disabled>
-        <span class="btn-text">Analyser la facture</span>
-        <span class="btn-loader" style="display:none">
-          <span class="spinner"></span> Extraction en cours…
-        </span>
-      </button>
-    </div>
+        function addFiles(files) {
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            const newFiles = [...selectedFiles, ...imageFiles].slice(0, 100);
+            selectedFiles = newFiles;
+            
+            updateFileList();
+            
+            if (selectedFiles.length > 0) {
+                fileList.style.display = 'block';
+                processFiles();
+            }
+        }
 
-    <!-- Résultats -->
-    <section class="results" id="results" style="display:none">
+        function updateFileList() {
+            fileCountSpan.textContent = selectedFiles.length;
+            fileListContainer.innerHTML = selectedFiles.map((file, idx) => `
+                <div class="file-item">
+                    <span>📄 ${file.name}</span>
+                    <span>${(file.size / 1024).toFixed(1)} KB</span>
+                </div>
+            `).join('');
+        }
 
-      <div class="results-header">
-        <h2>Données extraites</h2>
-        <div class="results-meta" id="resultsMeta"></div>
-      </div>
+        async function processFiles() {
+            if (selectedFiles.length === 0) return;
 
-      <!-- Grille infos -->
-      <div class="cards-grid">
-        <div class="card">
-          <div class="card-label">N° Facture</div>
-          <div class="card-value" id="r-numero">—</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Date d'émission</div>
-          <div class="card-value" id="r-date-em">—</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Date d'échéance</div>
-          <div class="card-value" id="r-date-ec">—</div>
-        </div>
-        <div class="card card-accent">
-          <div class="card-label">Total TTC</div>
-          <div class="card-value" id="r-total">—</div>
-        </div>
-      </div>
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('fichiers', file);
+            });
 
-      <!-- Fournisseur / Client -->
-      <div class="two-col">
-        <div class="info-block">
-          <div class="block-title">Fournisseur</div>
-          <table class="info-table">
-            <tr><td>Nom</td><td id="r-four-nom">—</td></tr>
-            <tr><td>Adresse</td><td id="r-four-adr">—</td></tr>
-            <tr><td>RCCM</td><td id="r-four-rccm">—</td></tr>
-            <tr><td>Capital</td><td id="r-four-cap">—</td></tr>
-            <tr><td>Téléphone</td><td id="r-four-tel">—</td></tr>
-            <tr><td>Email</td><td id="r-four-email">—</td></tr>
-          </table>
-        </div>
-        <div class="info-block">
-          <div class="block-title">Client</div>
-          <table class="info-table">
-            <tr><td>Nom</td><td id="r-cli-nom">—</td></tr>
-            <tr><td>Mode paiement</td><td id="r-paiement">—</td></tr>
-            <tr><td>Sous-total HT</td><td id="r-sousTotal">—</td></tr>
-            <tr><td>TVA</td><td id="r-tva">—</td></tr>
-          </table>
-        </div>
-      </div>
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                if (progress < 90) {
+                    progress += 10;
+                    document.getElementById('progressFill').style.width = `${progress}%`;
+                }
+            }, 500);
 
-      <!-- Tableau lignes -->
-      <div class="table-section">
-        <div class="block-title">Lignes de la facture</div>
-        <div class="table-wrap">
-          <table class="lines-table" id="linesTable">
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th>Qté</th>
-                <th>Prix HT</th>
-                <th>TVA %</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody id="linesBody"></tbody>
-          </table>
-        </div>
-      </div>
+            try {
+                const response = await fetch('/analyser_batch', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                clearInterval(progressInterval);
+                document.getElementById('progressFill').style.width = '100%';
+                document.getElementById('progressText').textContent = 'Analyse terminée !';
+                
+                if (response.ok) {
+                    processingResults = data;
+                    displayResults(data);
+                } else {
+                    alert('Erreur: ' + (data.erreur || 'Inconnue'));
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                alert('Erreur de connexion: ' + error.message);
+            }
+        }
 
-      <!-- Texte brut -->
-      <details class="raw-details">
-        <summary>Texte brut OCR (pour vérification)</summary>
-        <pre id="rawText" class="raw-text"></pre>
-      </details>
+        function displayResults(data) {
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            const stats = document.getElementById('stats');
+            stats.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${data.total}</div>
+                    <div>Total fichiers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color:#28A745">${data.succes}</div>
+                    <div>Succès</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color:#DC3545">${data.erreurs}</div>
+                    <div>Erreurs</div>
+                </div>
+            `;
+            
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = data.resultats.map((r, idx) => `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${r.nom}</td>
+                    <td>${r.donnees?.type || '-'}</td>
+                    <td class="${r.succes ? 'badge-success' : 'badge-error'}">${r.succes ? '✅ Succès' : '❌ ' + (r.erreur || 'Erreur')}</td>
+                    <td>
+                        ${r.succes ? `<button class="btn-download-single" data-index="${idx}" style="background:#D4AF37;color:#1B3A5C;border:none;padding:5px10px;border-radius:5px;cursor:pointer;">📄 Excel</button>` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+            
+            // Boutons de téléchargement individuels
+            document.querySelectorAll('.btn-download-single').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const idx = parseInt(btn.dataset.index);
+                    const resultat = data.resultats[idx];
+                    if (resultat && resultat.donnees) {
+                        const response = await fetch('/telecharger_unique', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(resultat.donnees)
+                        });
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${resultat.nom.replace(/\.[^/.]+$/, '')}_extrait.xlsx`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        }
+                    }
+                });
+            });
+        }
 
-      <!-- Télécharger -->
-      <div class="download-row">
-        <button class="btn-download" id="btnDownload">
-          ↓ Télécharger le fichier Excel
-        </button>
-      </div>
-
-    </section>
-
-    <!-- Comment ça marche -->
-    <section class="how-section" id="comment">
-      <h2>Comment ça marche</h2>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">01</div>
-          <div class="step-text">
-            <strong>Upload</strong>
-            Glisse ou sélectionne une image de ta facture (photo, scan, screenshot)
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">02</div>
-          <div class="step-text">
-            <strong>OCR local</strong>
-            Tesseract analyse l'image directement sur le serveur — aucune donnée envoyée à un tiers
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">03</div>
-          <div class="step-text">
-            <strong>Excel structuré</strong>
-            Télécharge un fichier .xlsx avec toutes les données bien organisées
-          </div>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="footer">
-    <span>FactureOCR · Tesseract OCR · Flask · OpenPyXL</span>
-    <span>100% open source · 0 API · 0 abonnement</span>
-  </footer>
-
-  <script src="/static/js/main.js"></script>
+        document.getElementById('downloadAllBtn').addEventListener('click', async () => {
+            if (!processingResults) return;
+            
+            const response = await fetch('/telecharger_batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resultats: processingResults.resultats })
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `factures_extraites_${new Date().toISOString().slice(0,19)}.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        });
+    </script>
 </body>
 </html>
