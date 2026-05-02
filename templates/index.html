@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FactureOCR — Extraction intelligente</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  {% if not tesseract_ok %}
+  <div class="alert-banner">
+    ⚠ Tesseract OCR non détecté sur ce serveur. Installe-le pour activer l'extraction.
+  </div>
+  {% endif %}
+
+  <header class="header">
+    <div class="logo">
+      <span class="logo-icon">▦</span>
+      <span class="logo-text">FactureOCR</span>
+    </div>
+    <nav class="nav-pills">
+      <span class="pill active">Extraction</span>
+      <a href="#comment" class="pill">Comment ça marche</a>
+    </nav>
+  </header>
+
+  <main class="main">
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-tag">100% local · sans API · sans abonnement</div>
+      <h1 class="hero-title">Transforme tes<br><em>factures</em> en Excel</h1>
+      <p class="hero-sub">Glisse une image de facture — le moteur OCR extrait tous les champs et génère un fichier Excel structuré instantanément.</p>
+    </section>
+
+    <!-- Upload zone -->
+    <section class="upload-section">
+      <div class="upload-zone" id="dropZone">
+        <div class="upload-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="8" y="8" width="32" height="32" rx="4" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
+            <path d="M24 32V20M18 26l6-6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="upload-label">Glisse ta facture ici</p>
+        <p class="upload-sub">ou</p>
+        <label class="btn-upload" for="fileInput">Choisir un fichier</label>
+        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.webp,.gif" hidden />
+        <p class="upload-formats">JPG · PNG · BMP · TIFF · WEBP</p>
+      </div>
+
+      <!-- Preview -->
+      <div class="preview-box" id="previewBox" style="display:none">
+        <img id="previewImg" src="" alt="Aperçu" />
+        <button class="btn-remove" id="btnRemove">✕ Changer</button>
+      </div>
+    </section>
+
+    <!-- Bouton analyser -->
+    <div class="action-row">
+      <button class="btn-primary" id="btnAnalyser" disabled>
+        <span class="btn-text">Analyser la facture</span>
+        <span class="btn-loader" style="display:none">
+          <span class="spinner"></span> Extraction en cours…
+        </span>
+      </button>
+    </div>
+
+    <!-- Résultats -->
+    <section class="results" id="results" style="display:none">
+
+      <div class="results-header">
+        <h2>Données extraites</h2>
+        <div class="results-meta" id="resultsMeta"></div>
+      </div>
+
+      <!-- Grille infos -->
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-label">N° Facture</div>
+          <div class="card-value" id="r-numero">—</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Date d'émission</div>
+          <div class="card-value" id="r-date-em">—</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Date d'échéance</div>
+          <div class="card-value" id="r-date-ec">—</div>
+        </div>
+        <div class="card card-accent">
+          <div class="card-label">Total TTC</div>
+          <div class="card-value" id="r-total">—</div>
+        </div>
+      </div>
+
+      <!-- Fournisseur / Client -->
+      <div class="two-col">
+        <div class="info-block">
+          <div class="block-title">Fournisseur</div>
+          <table class="info-table">
+            <tr><td>Nom</td><td id="r-four-nom">—</td></tr>
+            <tr><td>Adresse</td><td id="r-four-adr">—</td></tr>
+            <tr><td>RCCM</td><td id="r-four-rccm">—</td></tr>
+            <tr><td>Capital</td><td id="r-four-cap">—</td></tr>
+            <tr><td>Téléphone</td><td id="r-four-tel">—</td></tr>
+            <tr><td>Email</td><td id="r-four-email">—</td></tr>
+          </table>
+        </div>
+        <div class="info-block">
+          <div class="block-title">Client</div>
+          <table class="info-table">
+            <tr><td>Nom</td><td id="r-cli-nom">—</td></tr>
+            <tr><td>Mode paiement</td><td id="r-paiement">—</td></tr>
+            <tr><td>Sous-total HT</td><td id="r-sousTotal">—</td></tr>
+            <tr><td>TVA</td><td id="r-tva">—</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tableau lignes -->
+      <div class="table-section">
+        <div class="block-title">Lignes de la facture</div>
+        <div class="table-wrap">
+          <table class="lines-table" id="linesTable">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Qté</th>
+                <th>Prix HT</th>
+                <th>TVA %</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="linesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Texte brut -->
+      <details class="raw-details">
+        <summary>Texte brut OCR (pour vérification)</summary>
+        <pre id="rawText" class="raw-text"></pre>
+      </details>
+
+      <!-- Télécharger -->
+      <div class="download-row">
+        <button class="btn-download" id="btnDownload">
+          ↓ Télécharger le fichier Excel
+        </button>
+      </div>
+
+    </section>
+
+    <!-- Comment ça marche -->
+    <section class="how-section" id="comment">
+      <h2>Comment ça marche</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-text">
+            <strong>Upload</strong>
+            Glisse ou sélectionne une image de ta facture (photo, scan, screenshot)
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-text">
+            <strong>OCR local</strong>
+            Tesseract analyse l'image directement sur le serveur — aucune donnée envoyée à un tiers
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-text">
+            <strong>Excel structuré</strong>
+            Télécharge un fichier .xlsx avec toutes les données bien organisées
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>FactureOCR · Tesseract OCR · Flask · OpenPyXL</span>
+    <span>100% open source · 0 API · 0 abonnement</span>
+  </footer>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
