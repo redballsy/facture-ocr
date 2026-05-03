@@ -70,7 +70,6 @@
             cursor: pointer;
             margin-top: 10px;
         }
-        .btn-upload:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(212,175,55,0.3); }
         .progress-container { margin: 20px 0; display: none; }
         .progress-bar {
             background: #DEE2E6;
@@ -98,7 +97,6 @@
             background: #1B3A5C;
             color: white;
         }
-        .results-table tr:hover { background: #FFF8F0; }
         .btn-download {
             background: linear-gradient(135deg, #28A745 0%, #218838 100%);
             color: white;
@@ -111,18 +109,12 @@
             width: 100%;
             margin-top: 20px;
         }
-        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(40,167,69,0.4); }
         .footer {
             background: #1B3A5C;
             color: white;
             text-align: center;
             padding: 20px;
             font-size: 12px;
-        }
-        .supported-formats {
-            font-size: 11px;
-            color: #999;
-            margin-top: 10px;
         }
         .stats {
             display: flex;
@@ -138,7 +130,6 @@
             padding: 10px;
             background: white;
             border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         .stat-number {
             font-size: 24px;
@@ -153,193 +144,87 @@
     <div class="container">
         <div class="header">
             <div class="header-content">
-                <div class="logo-section">
-                    <div class="logo-text">GESFI<span>GROUP</span></div>
-                    <div class="group-badge" style="font-size:12px;margin-left:10px;">EXTRACTEUR OCR</div>
-                </div>
-                <div class="status-badge {% if tesseract_ok %}success{% else %}error{% endif %}">
-                    {% if tesseract_ok %}✅ Tesseract actif{% else %}❌ Tesseract non installé{% endif %}
-                </div>
+                <div class="logo-text">GESFI<span>GROUP</span></div>
+                <div class="status-badge">✅ Tesseract actif</div>
             </div>
         </div>
-
         <div class="content">
             <div class="drop-zone" id="dropZone">
                 <div style="font-size:48px;margin-bottom:15px;">📦</div>
-                <div style="font-size:18px;margin-bottom:5px;">Glissez-déposez jusqu'à 100 factures ici</div>
-                <div class="supported-formats">Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF</div>
+                <div>Glissez-déposez jusqu'à 100 factures ici</div>
+                <div style="font-size:11px;color:#999;margin-top:5px;">Formats: JPG, PNG, BMP, TIFF, WEBP, PDF</div>
                 <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display:none;">
-                <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
-                    📁 Sélectionner des fichiers
-                </button>
+                <button class="btn-upload" onclick="document.getElementById('fileInput').click()">Sélectionner des fichiers</button>
             </div>
-
             <div class="progress-container" id="progressContainer">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <p id="progressText" style="margin-top:10px;text-align:center;color:#666;">Analyse en cours...</p>
+                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                <p id="progressText" style="margin-top:10px;text-align:center;"></p>
             </div>
-
             <div id="resultsSection" style="display:none;">
                 <div class="stats" id="stats"></div>
                 <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Nom du fichier</th>
-                            <th>Type détecté</th>
-                            <th>Statut</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>#</th><th>Fichier</th><th>Type</th><th>Statut</th></tr></thead>
                     <tbody id="resultsBody"></tbody>
                 </table>
-                <button class="btn-download" id="downloadAllBtn">
-                    📥 Télécharger tous les fichiers Excel (ZIP)
-                </button>
+                <button class="btn-download" id="downloadBtn">📥 Télécharger Excel (une feuille par facture)</button>
             </div>
         </div>
-
-        <div class="footer">
-            <p>© 2026 GESFI GROUP - Extraction intelligente Vente/Achat | Support PDF inclus</p>
-            <p style="font-size:10px;margin-top:5px;">Technologies: Tesseract OCR | OpenCV | Flask | pdf2image</p>
-        </div>
+        <div class="footer">© 2026 GESFI GROUP - Extraction intelligente Vente/Achat</div>
     </div>
-
     <script>
-        let selectedFiles = [];
-        let resultsData = null;
-
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-
+        let selectedFiles = [], resultsData = null;
+        const dropZone = document.getElementById('dropZone'), fileInput = document.getElementById('fileInput');
         dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('drag-over');
-        });
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('drag-over');
-            const files = Array.from(e.dataTransfer.files);
-            addFiles(files);
+            addFiles(Array.from(e.dataTransfer.files));
         });
-
-        fileInput.addEventListener('change', (e) => {
-            addFiles(Array.from(e.target.files));
-        });
-
+        fileInput.addEventListener('change', (e) => addFiles(Array.from(e.target.files)));
+        
         function addFiles(files) {
-            const validExtensions = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'gif', 'pdf'];
-            const validFiles = files.filter(f => {
-                const ext = f.name.split('.').pop().toLowerCase();
-                return validExtensions.includes(ext);
-            }).slice(0, 100);
-            
-            if (validFiles.length === 0 && files.length > 0) {
-                alert('Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF');
-                return;
-            }
-            
-            selectedFiles = validFiles;
-            if (selectedFiles.length) {
-                processFiles();
-            }
+            const validExts = ['jpg','jpeg','png','bmp','tiff','tif','webp','gif','pdf'];
+            const validFiles = files.filter(f => validExts.includes(f.name.split('.').pop().toLowerCase())).slice(0, 100);
+            if (validFiles.length) { selectedFiles = validFiles; processFiles(); }
+            else if (files.length) alert('Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF');
         }
-
+        
         async function processFiles() {
             const formData = new FormData();
-            selectedFiles.forEach(file => {
-                formData.append('fichiers', file);
-            });
-
+            selectedFiles.forEach(f => formData.append('fichiers', f));
             document.getElementById('progressContainer').style.display = 'block';
             document.getElementById('resultsSection').style.display = 'none';
-            
-            let progress = 0;
-            const interval = setInterval(() => {
-                if (progress < 90) {
-                    progress += 10;
-                    document.getElementById('progressFill').style.width = progress + '%';
-                }
-            }, 300);
-
+            let p = 0;
+            const interval = setInterval(() => { if (p < 90) { p += 10; document.getElementById('progressFill').style.width = p+'%'; } }, 300);
             try {
-                const response = await fetch('/analyser_batch', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
+                const res = await fetch('/analyser_batch', { method: 'POST', body: formData });
+                const data = await res.json();
                 clearInterval(interval);
                 document.getElementById('progressFill').style.width = '100%';
-                document.getElementById('progressText').textContent = '✅ Analyse terminée !';
-                
-                if (response.ok) {
-                    resultsData = data;
-                    displayResults(data);
-                } else {
-                    alert('Erreur: ' + (data.erreur || 'Inconnue'));
-                }
-            } catch (error) {
-                clearInterval(interval);
-                alert('Erreur de connexion: ' + error.message);
-            }
+                if (res.ok) { resultsData = data; displayResults(data); }
+                else alert('Erreur: ' + (data.erreur || 'Inconnue'));
+            } catch(e) { clearInterval(interval); alert('Erreur: ' + e.message); }
         }
-
+        
         function displayResults(data) {
             document.getElementById('resultsSection').style.display = 'block';
-            
-            const stats = document.getElementById('stats');
-            stats.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number">${data.total}</div>
-                    <div>Total fichiers</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color:#28A745">${data.succes}</div>
-                    <div>Traités avec succès</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color:#DC3545">${data.erreurs}</div>
-                    <div>En erreur</div>
-                </div>
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card"><div class="stat-number">${data.total}</div><div>Total</div></div>
+                <div class="stat-card"><div class="stat-number" style="color:#28A745">${data.succes}</div><div>Succès</div></div>
+                <div class="stat-card"><div class="stat-number" style="color:#DC3545">${data.erreurs}</div><div>Erreurs</div></div>
             `;
-            
-            const tbody = document.getElementById('resultsBody');
-            tbody.innerHTML = data.resultats.map((r, idx) => `
-                <tr>
-                    <td>${idx + 1}</td>
-                    <td>${r.nom}</td>
-                    <td>${r.donnees?.type || '-'}</td>
-                    <td class="${r.succes ? 'badge-success' : 'badge-error'}">
-                        ${r.succes ? '✅ Succès' : '❌ ' + (r.erreur || 'Erreur')}
-                    </td>
-                </tr>
+            document.getElementById('resultsBody').innerHTML = data.resultats.map((r,i)=>`
+                <tr><td>${i+1}</td><td>${r.nom}</td><td>${r.donnees?.type||'-'}</td>
+                <td class="${r.succes?'badge-success':'badge-error'}">${r.succes?'✅ Succès':'❌ '+ (r.erreur||'Erreur')}</td></tr>
             `).join('');
         }
-
-        document.getElementById('downloadAllBtn').addEventListener('click', async () => {
+        
+        document.getElementById('downloadBtn').addEventListener('click', async () => {
             if (!resultsData) return;
-            
-            const response = await fetch('/telecharger_batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ resultats: resultsData.resultats })
-            });
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `factures_extraites_${new Date().toISOString().slice(0,19)}.zip`;
-                a.click();
-                URL.revokeObjectURL(url);
-            } else {
-                alert('Erreur lors du téléchargement');
-            }
+            const res = await fetch('/telecharger_excel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({resultats: resultsData.resultats}) });
+            if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `factures_${Date.now()}.xlsx`; a.click(); URL.revokeObjectURL(url); }
         });
     </script>
 </body>
