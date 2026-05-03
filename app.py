@@ -203,7 +203,7 @@ def extraire_facture_achat(texte: str) -> list:
     # 15. TVA (montant)
     tva = chercher(r'TVA:\s*[\*]*\s*([\d\s\.,]+)', texte)
     if tva:
-        donnees.append(("TVA (montant)", nettoyer_montant(tva) + " FCFA"))
+        donnees.append(("TVA (montant)", nettoyer_montant(tva)))
     
     # 16. Total TTC
     total_ttc = chercher(r'Total TTC:\s*[\*]*\s*([\d\s\.,]+)', texte)
