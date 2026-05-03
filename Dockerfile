@@ -1,14 +1,17 @@
 FROM python:3.11-slim
 
-# Installation complète de Tesseract
+# Éviter les warnings debconf
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Créer le groupe et l'utilisateur tesseract
+RUN groupadd -r tesseract && useradd -r -g tesseract tesseract
+
+# Installation de Tesseract
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
-
-# Vérifier l'installation
-RUN tesseract --version
 
 WORKDIR /app
 
@@ -17,7 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Forcer le chemin de Tesseract
+# Donner les permissions à l'utilisateur
+RUN chown -R tesseract:tesseract /app
+
+# Utiliser l'utilisateur tesseract
+USER tesseract
+
 ENV TESSERACT_CMD=/usr/bin/tesseract
 
 EXPOSE 5000
