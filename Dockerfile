@@ -1,11 +1,8 @@
-﻿FROM python:3.11-slim
+FROM python:3.11-slim
 
-# Installation de Tesseract OCR et poppler (pour PDF)
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,4 +17,4 @@ ENV TESSERACT_CMD=/usr/bin/tesseract
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "app:app"]
