@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GESFI GROUP - Extracteur Batch (100 fichiers)</title>
+    <title>GESFI GROUP - Extracteur Factures OCR</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -13,7 +13,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 20px;
@@ -24,7 +24,6 @@
             background: linear-gradient(135deg, #1B3A5C 0%, #2E5A88 100%);
             color: white;
             padding: 30px 40px;
-            position: relative;
         }
         .header-content {
             display: flex;
@@ -38,12 +37,6 @@
             font-weight: bold;
         }
         .logo-text span { color: #D4AF37; }
-        .group-badge {
-            font-size: 14px;
-            color: #D4AF37;
-            border-left: 2px solid #D4AF37;
-            padding-left: 10px;
-        }
         .status-badge {
             background: rgba(212,175,55,0.2);
             padding: 8px 16px;
@@ -51,9 +44,7 @@
             font-size: 12px;
             border: 1px solid #D4AF37;
         }
-        .status-badge.success { background: rgba(40,167,69,0.2); border-color: #28A745; }
         .content { padding: 40px; }
-        
         .drop-zone {
             border: 3px dashed #DEE2E6;
             border-radius: 15px;
@@ -68,7 +59,6 @@
             border-color: #D4AF37;
             background: #FFF8F0;
         }
-        .drop-zone-icon { font-size: 48px; margin-bottom: 15px; }
         .btn-upload {
             background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
             color: #1B3A5C;
@@ -80,25 +70,8 @@
             cursor: pointer;
             margin-top: 10px;
         }
-        .file-list {
-            background: #F8F9FA;
-            border-radius: 15px;
-            padding: 20px;
-            margin: 20px 0;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .file-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            border-bottom: 1px solid #DEE2E6;
-            font-size: 13px;
-        }
-        .progress-container {
-            margin: 20px 0;
-            display: none;
-        }
+        .btn-upload:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(212,175,55,0.3); }
+        .progress-container { margin: 20px 0; display: none; }
         .progress-bar {
             background: #DEE2E6;
             border-radius: 10px;
@@ -110,7 +83,6 @@
             height: 100%;
             width: 0%;
             transition: width 0.3s;
-            border-radius: 10px;
         }
         .results-table {
             width: 100%;
@@ -127,8 +99,6 @@
             color: white;
         }
         .results-table tr:hover { background: #FFF8F0; }
-        .badge-success { color: #28A745; font-weight: bold; }
-        .badge-error { color: #DC3545; font-weight: bold; }
         .btn-download {
             background: linear-gradient(135deg, #28A745 0%, #218838 100%);
             color: white;
@@ -141,9 +111,18 @@
             width: 100%;
             margin-top: 20px;
         }
-        .btn-download:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(40,167,69,0.4); }
+        .footer {
+            background: #1B3A5C;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+        }
+        .supported-formats {
+            font-size: 11px;
+            color: #999;
+            margin-top: 10px;
         }
         .stats {
             display: flex;
@@ -159,23 +138,15 @@
             padding: 10px;
             background: white;
             border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         .stat-number {
             font-size: 24px;
             font-weight: bold;
             color: #1B3A5C;
         }
-        .footer {
-            background: #1B3A5C;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 12px;
-        }
-        @media (max-width: 768px) {
-            .content { padding: 20px; }
-            .header-content { flex-direction: column; }
-        }
+        .badge-success { color: #28A745; font-weight: bold; }
+        .badge-error { color: #DC3545; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -184,7 +155,7 @@
             <div class="header-content">
                 <div class="logo-section">
                     <div class="logo-text">GESFI<span>GROUP</span></div>
-                    <div class="group-badge">EXTRACTEUR BATCH OCR (100 FICHIERS MAX)</div>
+                    <div class="group-badge" style="font-size:12px;margin-left:10px;">EXTRACTEUR OCR</div>
                 </div>
                 <div class="status-badge {% if tesseract_ok %}success{% else %}error{% endif %}">
                     {% if tesseract_ok %}✅ Tesseract actif{% else %}❌ Tesseract non installé{% endif %}
@@ -194,59 +165,53 @@
 
         <div class="content">
             <div class="drop-zone" id="dropZone">
-                <div class="drop-zone-icon">📦</div>
-                <div class="drop-zone-text">Glissez-déposez jusqu'à 100 factures ici</div>
-                <div class="drop-zone-subtext">Formats supportés: JPG, PNG, BMP, TIFF, WEBP</div>
-                <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                <div style="font-size:48px;margin-bottom:15px;">📦</div>
+                <div style="font-size:18px;margin-bottom:5px;">Glissez-déposez jusqu'à 100 factures ici</div>
+                <div class="supported-formats">Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF</div>
+                <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display:none;">
                 <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
-                    Sélectionner des fichiers
+                    📁 Sélectionner des fichiers
                 </button>
-            </div>
-
-            <div id="fileList" class="file-list" style="display:none;">
-                <h4>📁 Fichiers sélectionnés (<span id="fileCount">0</span>/100)</h4>
-                <div id="fileListContainer"></div>
             </div>
 
             <div class="progress-container" id="progressContainer">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <p id="progressText" style="margin-top: 10px; text-align: center;"></p>
+                <p id="progressText" style="margin-top:10px;text-align:center;color:#666;">Analyse en cours...</p>
             </div>
 
             <div id="resultsSection" style="display:none;">
                 <div class="stats" id="stats"></div>
-                <table class="results-table" id="resultsTable">
+                <table class="results-table">
                     <thead>
                         <tr>
                             <th>#</th>
                             <th>Nom du fichier</th>
                             <th>Type détecté</th>
                             <th>Statut</th>
-                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody"></tbody>
                 </table>
-                <button class="btn-download" id="downloadAllBtn">📥 Télécharger tous les fichiers Excel (ZIP)</button>
+                <button class="btn-download" id="downloadAllBtn">
+                    📥 Télécharger tous les fichiers Excel (ZIP)
+                </button>
             </div>
         </div>
 
         <div class="footer">
-            <p>© 2026 GESFI GROUP - Traitement batch jusqu'à 100 factures | OCR intelligent Vente/Achat</p>
+            <p>© 2026 GESFI GROUP - Extraction intelligente Vente/Achat | Support PDF inclus</p>
+            <p style="font-size:10px;margin-top:5px;">Technologies: Tesseract OCR | OpenCV | Flask | pdf2image</p>
         </div>
     </div>
 
     <script>
         let selectedFiles = [];
-        let processingResults = null;
+        let resultsData = null;
 
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const fileList = document.getElementById('fileList');
-        const fileListContainer = document.getElementById('fileListContainer');
-        const fileCountSpan = document.getElementById('fileCount');
 
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => {
@@ -266,31 +231,24 @@
         });
 
         function addFiles(files) {
-            const imageFiles = files.filter(f => f.type.startsWith('image/'));
-            const newFiles = [...selectedFiles, ...imageFiles].slice(0, 100);
-            selectedFiles = newFiles;
+            const validExtensions = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'gif', 'pdf'];
+            const validFiles = files.filter(f => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                return validExtensions.includes(ext);
+            }).slice(0, 100);
             
-            updateFileList();
+            if (validFiles.length === 0 && files.length > 0) {
+                alert('Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF');
+                return;
+            }
             
-            if (selectedFiles.length > 0) {
-                fileList.style.display = 'block';
+            selectedFiles = validFiles;
+            if (selectedFiles.length) {
                 processFiles();
             }
         }
 
-        function updateFileList() {
-            fileCountSpan.textContent = selectedFiles.length;
-            fileListContainer.innerHTML = selectedFiles.map((file, idx) => `
-                <div class="file-item">
-                    <span>📄 ${file.name}</span>
-                    <span>${(file.size / 1024).toFixed(1)} KB</span>
-                </div>
-            `).join('');
-        }
-
         async function processFiles() {
-            if (selectedFiles.length === 0) return;
-
             const formData = new FormData();
             selectedFiles.forEach(file => {
                 formData.append('fichiers', file);
@@ -300,12 +258,12 @@
             document.getElementById('resultsSection').style.display = 'none';
             
             let progress = 0;
-            const progressInterval = setInterval(() => {
+            const interval = setInterval(() => {
                 if (progress < 90) {
                     progress += 10;
-                    document.getElementById('progressFill').style.width = `${progress}%`;
+                    document.getElementById('progressFill').style.width = progress + '%';
                 }
-            }, 500);
+            }, 300);
 
             try {
                 const response = await fetch('/analyser_batch', {
@@ -314,18 +272,18 @@
                 });
                 
                 const data = await response.json();
-                clearInterval(progressInterval);
+                clearInterval(interval);
                 document.getElementById('progressFill').style.width = '100%';
-                document.getElementById('progressText').textContent = 'Analyse terminée !';
+                document.getElementById('progressText').textContent = '✅ Analyse terminée !';
                 
                 if (response.ok) {
-                    processingResults = data;
+                    resultsData = data;
                     displayResults(data);
                 } else {
                     alert('Erreur: ' + (data.erreur || 'Inconnue'));
                 }
             } catch (error) {
-                clearInterval(progressInterval);
+                clearInterval(interval);
                 alert('Erreur de connexion: ' + error.message);
             }
         }
@@ -341,11 +299,11 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" style="color:#28A745">${data.succes}</div>
-                    <div>Succès</div>
+                    <div>Traités avec succès</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" style="color:#DC3545">${data.erreurs}</div>
-                    <div>Erreurs</div>
+                    <div>En erreur</div>
                 </div>
             `;
             
@@ -355,45 +313,20 @@
                     <td>${idx + 1}</td>
                     <td>${r.nom}</td>
                     <td>${r.donnees?.type || '-'}</td>
-                    <td class="${r.succes ? 'badge-success' : 'badge-error'}">${r.succes ? '✅ Succès' : '❌ ' + (r.erreur || 'Erreur')}</td>
-                    <td>
-                        ${r.succes ? `<button class="btn-download-single" data-index="${idx}" style="background:#D4AF37;color:#1B3A5C;border:none;padding:5px10px;border-radius:5px;cursor:pointer;">📄 Excel</button>` : '-'}
+                    <td class="${r.succes ? 'badge-success' : 'badge-error'}">
+                        ${r.succes ? '✅ Succès' : '❌ ' + (r.erreur || 'Erreur')}
                     </td>
                 </tr>
             `).join('');
-            
-            // Boutons de téléchargement individuels
-            document.querySelectorAll('.btn-download-single').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const idx = parseInt(btn.dataset.index);
-                    const resultat = data.resultats[idx];
-                    if (resultat && resultat.donnees) {
-                        const response = await fetch('/telecharger_unique', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(resultat.donnees)
-                        });
-                        if (response.ok) {
-                            const blob = await response.blob();
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `${resultat.nom.replace(/\.[^/.]+$/, '')}_extrait.xlsx`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                        }
-                    }
-                });
-            });
         }
 
         document.getElementById('downloadAllBtn').addEventListener('click', async () => {
-            if (!processingResults) return;
+            if (!resultsData) return;
             
             const response = await fetch('/telecharger_batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ resultats: processingResults.resultats })
+                body: JSON.stringify({ resultats: resultsData.resultats })
             });
             
             if (response.ok) {
@@ -404,6 +337,8 @@
                 a.download = `factures_extraites_${new Date().toISOString().slice(0,19)}.zip`;
                 a.click();
                 URL.revokeObjectURL(url);
+            } else {
+                alert('Erreur lors du téléchargement');
             }
         });
     </script>

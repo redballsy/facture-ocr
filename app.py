@@ -17,17 +17,17 @@ try:
     import numpy as np
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+    from pdf2image import convert_from_bytes
 except ImportError as e:
     print(f"❌ Dépendance manquante: {e}")
-    print("Lance: pip install flask pytesseract pillow opencv-python openpyxl")
+    print("Lance: pip install flask pytesseract pillow opencv-python openpyxl pdf2image")
     sys.exit(1)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max pour 100 fichiers
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gesfi-secret-key-2026")
 
-EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "gif"}
+EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "gif", "pdf"}
 
 # ========== COULEURS GESFI GROUP ==========
 COULEURS_GESFI = {
@@ -44,17 +44,12 @@ COULEURS_GESFI = {
     "border": "#DEE2E6",
 }
 
-# Couleurs pour Excel (sans # pour openpyxl)
 COULEURS_EXCEL = {
     "header_bg": "1B3A5C",
     "header_font": "FFFFFF",
-    "titre_bg": "2E5A88",
-    "titre_font": "FFFFFF",
     "ligne_paire": "F0F4F8",
-    "total_bg": "1B3A5C",
+    "total_bg": "2E5A88",
     "total_font": "FFFFFF",
-    "sous_total": "E8F0F8",
-    "border": "DEE2E6",
 }
 
 CHEMINS_TESSERACT = [
@@ -95,7 +90,7 @@ def pretraiter_image(img_bytes: bytes) -> Image.Image:
     )
     return Image.fromarray(thresh)
 
-def extraire_texte(img_bytes: bytes) -> str:
+def extraire_texte_image(img_bytes: bytes) -> str:
     img = pretraiter_image(img_bytes)
     config = "--oem 3 --psm 6"
     try:
@@ -106,25 +101,34 @@ def extraire_texte(img_bytes: bytes) -> str:
         except Exception:
             return ""
 
-# ── Détection du type de facture ─────────────────────────────────────────────
+def traiter_pdf(img_bytes: bytes) -> str:
+    """Convertit un PDF en images et extrait le texte"""
+    try:
+        images = convert_from_bytes(img_bytes, dpi=300)
+        texte_complet = ""
+        
+        for i, image in enumerate(images):
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='PNG')
+            img_byte_arr.seek(0)
+            texte = extraire_texte_image(img_byte_arr.getvalue())
+            texte_complet += f"\n--- Page {i+1} ---\n{texte}\n"
+        
+        return texte_complet
+    except Exception as e:
+        print(f"Erreur lors du traitement PDF: {e}")
+        return ""
 
-def detecter_type_facture(texte: str) -> str:
-    """Détecte si c'est une facture de vente ou d'achat"""
-    texte_lower = texte.lower()
+def extraire_texte(img_bytes: bytes, filename: str) -> str:
+    """Extrait le texte d'une image ou d'un PDF selon l'extension"""
+    extension = filename.lower().split('.')[-1] if '.' in filename else ''
     
-    # Indicateurs facture d'achat
-    if "facture d'achat" in texte_lower or "po-" in texte_lower or "livraison prévue" in texte_lower:
-        return "achat"
-    
-    # Indicateurs facture de vente
-    if "client" in texte_lower and "tablette" in texte_lower:
-        return "vente"
-    
-    # Indicateurs facture standard
-    if "fournisseur" in texte_lower and "client" in texte_lower:
-        return "standard"
-    
-    return "standard"
+    if extension == 'pdf':
+        return traiter_pdf(img_bytes)
+    else:
+        return extraire_texte_image(img_bytes)
+
+# ── Fonctions utilitaires ─────────────────────────────────────────────────────
 
 def net(s):
     return s.strip() if s else ""
@@ -141,233 +145,233 @@ def nettoyer_montant(montant_str):
     montant = montant.replace(',', '.')
     return montant
 
-# ── Extraction spécifique pour facture de VENTE (facture.png) ─────────────────
+def detecter_type_facture(texte: str) -> str:
+    """Détecte si c'est une facture d'achat ou standard"""
+    texte_lower = texte.lower()
+    if "facture d'achat" in texte_lower or "po-" in texte_lower or "livraison prévue" in texte_lower or "fournisseur" in texte_lower:
+        return "achat"
+    return "standard"
 
-def extraire_facture_vente(texte: str) -> dict:
-    """Extraction pour le template facture de vente"""
-    donnees = {
-        "type": "VENTE",
-        "champs": {},
-        "lignes": [],
-        "autres": []
-    }
+# ── Extraction FACTURE STANDARD (facture.png) ─────────────────────────────────
+
+def extraire_facture_standard(texte: str) -> list:
+    """Extraction pour le template facture standard (vente)"""
+    donnees = []
     
-    # Numéro de facture
-    num_facture = chercher(r'(?:INV|N°|Numéro)[\s\-:]*([A-Z0-9\-]+)', texte)
+    num_facture = chercher(r'FACTURE\s+([A-Z0-9\-]+)', texte)
     if not num_facture:
-        num_facture = chercher(r'FACTURE[\s\w]*([A-Z0-9\-]+)', texte)
-    donnees["champs"]["N° FACTURE"] = num_facture
+        num_facture = chercher(r'(?:INV|N°|Numéro)[\s\-:]*([A-Z0-9\-]+)', texte)
+    if num_facture:
+        donnees.append(("N° FACTURE", num_facture))
     
-    # Dates
-    donnees["champs"]["Date d'émission"] = chercher(r'Date d\'émission:\s*([^\n]+)', texte)
-    donnees["champs"]["Date d'échéance"] = chercher(r'Date d\'échéance:\s*([^\n]+)', texte)
+    date_emission = chercher(r'Date d\'émission:\s*([^\n]+)', texte)
+    if date_emission:
+        donnees.append(("Date d'émission", date_emission))
     
-    # Source / Adresse
+    date_echeance = chercher(r'Date d\'échéance:\s*([^\n]+)', texte)
+    if date_echeance:
+        donnees.append(("Date d'échéance", date_echeance))
+    
     source = chercher(r'Source\s*([^\n]+)', texte)
     if not source:
         source = chercher(r'(\d+\s+BP\s+[A-Z]+,\s*[A-Z]+,\s*Côte', texte)
-    donnees["champs"]["Source"] = source
+    if source:
+        donnees.append(("Source", source))
     
-    # RCCM et Capital
-    donnees["champs"]["RCCM"] = chercher(r'(RCCM[\s\-]+[A-Z0-9\-]+)', texte)
-    donnees["champs"]["CAPITAL"] = chercher(r'CAPITAL\s+(\d[\d\s]+)', texte)
+    rccm = chercher(r'(RCCM[\s\-]+[A-Z0-9\-]+)', texte)
+    if rccm:
+        donnees.append(("RCCM", rccm))
     
-    # Client
+    capital1 = chercher(r'CAPITAL\s+(\d[\d\s]+)', texte)
+    if capital1:
+        donnees.append(("CAPITAL", capital1))
+    
     client = chercher(r'CLIENT\s+([^\n]+)', texte)
     if not client:
         client = chercher(r'Client[:\s]+([^\n]+)', texte)
-    donnees["champs"]["Client"] = client
+    if client:
+        donnees.append(("Client", client))
     
-    # Lignes de facture
-    pattern_ligne = r'(Tablette|Imprimante|Produit|Article)[\s\n]+(\d+)[\s\n]+([\d\s\.,]+)[\s\n]+(\d+%?)[\s\n]+([\d\s\.,]+)'
-    match = re.search(pattern_ligne, texte, re.IGNORECASE | re.DOTALL)
-    if match:
-        donnees["lignes"].append({
-            "Description": net(match.group(1)),
-            "Quantité": net(match.group(2)),
-            "Prix HT": net(match.group(3)),
-            "TVA %": net(match.group(4)),
-            "Total": net(match.group(5))
-        })
+    desc = chercher(r'Tablette|Description\s+([^\n]+)', texte)
+    if not desc:
+        desc = "Tablette"
+    if desc:
+        donnees.append(("Description", desc))
     
-    # Totaux
-    donnees["champs"]["Sous-total HT"] = chercher(r'Sous-total HT:\s*([\d\s\.,]+)', texte)
-    donnees["champs"]["TVA"] = chercher(r'TVA:\s*([\d\s\.,]+)', texte)
-    donnees["champs"]["Total TTC"] = chercher(r'Total TTC:\s*([\d\s\.,]+)', texte)
+    qte = chercher(r'Tablette\s+(\d+)', texte)
+    if not qte:
+        qte = chercher(r'Qté\s+(\d+)', texte)
+    if qte:
+        donnees.append(("Quantité", qte))
     
-    # Paiement
-    donnees["champs"]["Mode de paiement"] = chercher(r'PAIEMENT\s*:\s*([^\n]+)', texte)
+    prix = chercher(r'Tablette\s+\d+\s+([\d\s\.,]+)', texte)
+    if not prix:
+        prix = chercher(r'Prix HT\s+([\d\s\.,]+)', texte)
+    if prix:
+        donnees.append(("Prix HT", nettoyer_montant(prix) + " FCFA"))
     
-    # Autres informations
-    lignes_texte = [l.strip() for l in texte.split('\n') if l.strip()]
-    champs_connus = set(donnees["champs"].keys()) | {"Description", "Quantité", "Prix HT", "TVA %", "Total"}
+    tva_pct = chercher(r'TVA\s+(\d+%?)', texte)
+    if tva_pct:
+        donnees.append(("TVA %", tva_pct))
     
-    for ligne in lignes_texte:
-        if ligne and not any(c in ligne for c in champs_connus):
-            if ligne not in donnees["autres"]:
-                donnees["autres"].append(ligne)
+    total_ligne = chercher(r'Tablette\s+\d+\s+[\d\s\.,]+\s+\d+%?\s+([\d\s\.,]+)', texte)
+    if total_ligne:
+        donnees.append(("Total ligne", nettoyer_montant(total_ligne) + " FCFA"))
+    
+    sous_total = chercher(r'Sous-total HT:\s*([\d\s\.,]+)', texte)
+    if sous_total:
+        donnees.append(("Sous-total HT", nettoyer_montant(sous_total) + " FCFA"))
+    
+    tva_montant = chercher(r'TVA:\s*([\d\s\.,]+)', texte)
+    if tva_montant:
+        donnees.append(("TVA (montant)", nettoyer_montant(tva_montant) + " FCFA"))
+    
+    total_ttc = chercher(r'Total TTC:\s*([\d\s\.,]+)', texte)
+    if total_ttc:
+        donnees.append(("Total TTC", nettoyer_montant(total_ttc) + " FCFA"))
+    
+    capital2 = chercher(r'CAPITAL\s+(\d[\d\s]+)(?=.*$)', texte)
+    if capital2 and capital2 != capital1:
+        donnees.append(("CAPITAL (second)", capital2))
+    
+    paiement = chercher(r'PAIEMENT\s*:\s*([^\n]+)', texte)
+    if paiement:
+        donnees.append(("Mode de paiement", paiement))
     
     return donnees
 
-# ── Extraction spécifique pour facture d'ACHAT (facture2.png) ─────────────────
+# ── Extraction FACTURE ACHAT (facture2.png) ─────────────────────────────────
 
-def extraire_facture_achat(texte: str) -> dict:
+def extraire_facture_achat(texte: str) -> list:
     """Extraction pour le template facture d'achat"""
-    donnees = {
-        "type": "ACHAT",
-        "champs": {},
-        "lignes": [],
-        "autres": []
-    }
+    donnees = []
     
-    # Numéro de facture
-    donnees["champs"]["N° FACTURE"] = chercher(r'N°\s*([A-Z0-9\-]+)', texte)
-    if not donnees["champs"]["N° FACTURE"]:
-        donnees["champs"]["N° FACTURE"] = chercher(r'PO-([A-Z0-9\-]+)', texte)
+    num_facture = chercher(r'N°\s*([A-Z0-9\-]+)', texte)
+    if not num_facture:
+        num_facture = chercher(r'PO-([A-Z0-9\-]+)', texte)
+    if num_facture:
+        donnees.append(("N° FACTURE", num_facture))
     
-    # Dates
-    donnees["champs"]["Date"] = chercher(r'Date:\s*([^\n]+)', texte)
-    donnees["champs"]["Livraison prévue"] = chercher(r'Livraison prévue:\s*([^\n]+)', texte)
+    date = chercher(r'Date:\s*([^\n]+)', texte)
+    if date:
+        donnees.append(("Date", date))
     
-    # Source
-    donnees["champs"]["Source"] = chercher(r'Source\s*([^\n]+)', texte)
+    livraison = chercher(r'Livraison prévue:\s*([^\n]+)', texte)
+    if livraison:
+        donnees.append(("Livraison prévue", livraison))
     
-    # Fournisseur
-    donnees["champs"]["Fournisseur Nom"] = chercher(r'FOURNISSEUR\s*([^\n]+)', texte)
-    donnees["champs"]["Fournisseur Adresse"] = chercher(r'FOURNISSEUR\s*[^\n]+\s*([^\n]+)', texte, 1, "")
-    donnees["champs"]["Fournisseur Téléphone"] = chercher(r'Tél:\s*([^\n]+)', texte)
-    donnees["champs"]["Fournisseur Email"] = chercher(r'Email:\s*([^\n]+)', texte)
+    source = chercher(r'Source\s*([^\n]+)', texte)
+    if source:
+        donnees.append(("Source", source))
     
-    # Lignes de facture
-    pattern_ligne = r'(Imprimante de bureau|Tablette|Produit)[\s\n]+([\d\.,]+)[\s\n]+([\d\s\.,]+)[\s\n]+(\d+%?)[\s\n]+([\d\s\.,]+)'
-    match = re.search(pattern_ligne, texte, re.IGNORECASE | re.DOTALL)
-    if match:
-        donnees["lignes"].append({
-            "Description": net(match.group(1)),
-            "Quantité": net(match.group(2)),
-            "Prix Unitaire": net(match.group(3)),
-            "TVA %": net(match.group(4)),
-            "Total HT": net(match.group(5))
-        })
+    fournisseur_nom = chercher(r'FOURNISSEUR\s*([^\n]+)', texte)
+    if fournisseur_nom:
+        donnees.append(("Fournisseur Nom", fournisseur_nom))
     
-    # Totaux
-    donnees["champs"]["Sous-total HT"] = chercher(r'Sous-total HT:\s*([\d\s\.,]+)', texte)
-    donnees["champs"]["TVA"] = chercher(r'TVA:\s*([\d\s\.,]+)', texte)
-    donnees["champs"]["Total TTC"] = chercher(r'Total TTC:\s*([\d\s\.,]+)', texte)
+    fournisseur_adresse = chercher(r'FOURNISSEUR\s*[^\n]+\s*([^\n]+)', texte, 1, "")
+    if fournisseur_adresse:
+        donnees.append(("Fournisseur Adresse", fournisseur_adresse))
     
-    # Autres informations
-    lignes_texte = [l.strip() for l in texte.split('\n') if l.strip()]
-    champs_connus = set(donnees["champs"].keys())
+    fournisseur_tel = chercher(r'Tél:\s*([^\n]+)', texte)
+    if fournisseur_tel:
+        donnees.append(("Fournisseur Téléphone", fournisseur_tel))
     
-    for ligne in lignes_texte:
-        if ligne and not any(c in ligne for c in champs_connus):
-            if ligne not in donnees["autres"]:
-                donnees["autres"].append(ligne)
+    fournisseur_email = chercher(r'Email:\s*([^\n]+)', texte)
+    if fournisseur_email:
+        donnees.append(("Fournisseur Email", fournisseur_email))
     
-    return donnees
-
-# ── Extraction générique ─────────────────────────────────────────────────────
-
-def extraire_facture_generique(texte: str) -> dict:
-    """Extraction générique pour tout type de facture"""
-    donnees = {
-        "type": "STANDARD",
-        "champs": {},
-        "lignes": [],
-        "autres": []
-    }
+    desc = chercher(r'Imprimante de bureau|Description\s+([^\n]+)', texte)
+    if not desc:
+        desc = chercher(r'\| (.+?) \|', texte)
+    if desc:
+        donnees.append(("Description", desc))
     
-    # Extraction des paires clé:valeur
-    patterns = [
-        (r'(N°|Numéro|Facture)[\s:]+([^\n]+)', "N° FACTURE"),
-        (r'Date[\s:]+([^\n]+)', "Date"),
-        (r'Client[\s:]+([^\n]+)', "Client"),
-        (r'Fournisseur[\s:]+([^\n]+)', "Fournisseur"),
-        (r'Total[\s:]+([^\n]+)', "Total"),
-    ]
+    qte = chercher(r'Imprimante\s+([\d\.,]+)', texte)
+    if not qte:
+        qte = chercher(r'Qté\s+([\d\.,]+)', texte)
+    if qte:
+        donnees.append(("Quantité", qte))
     
-    for pattern, nom in patterns:
-        valeur = chercher(pattern, texte, 2)
-        if valeur:
-            donnees["champs"][nom] = valeur
+    prix = chercher(r'Imprimante\s+[\d\.,]+\s+([\d\s\.,]+)', texte)
+    if prix:
+        donnees.append(("Prix Unitaire", nettoyer_montant(prix) + " FCFA"))
+    
+    tva_pct = chercher(r'TVA\s+(\d+%?)', texte)
+    if tva_pct:
+        donnees.append(("TVA %", tva_pct))
+    
+    total_ligne = chercher(r'Imprimante\s+[\d\.,]+\s+[\d\s\.,]+\s+\d+%?\s+([\d\s\.,]+)', texte)
+    if total_ligne:
+        donnees.append(("Total HT ligne", nettoyer_montant(total_ligne) + " FCFA"))
+    
+    sous_total = chercher(r'Sous-total HT:\s*([\d\s\.,]+)', texte)
+    if sous_total:
+        donnees.append(("Sous-total HT", nettoyer_montant(sous_total) + " FCFA"))
+    
+    tva_montant = chercher(r'TVA:\s*([\d\s\.,]+)', texte)
+    if tva_montant:
+        donnees.append(("TVA (montant)", nettoyer_montant(tva_montant) + " FCFA"))
+    
+    total_ttc = chercher(r'Total TTC:\s*([\d\s\.,]+)', texte)
+    if total_ttc:
+        donnees.append(("Total TTC", nettoyer_montant(total_ttc) + " FCFA"))
     
     return donnees
 
 # ── Parser principal ─────────────────────────────────────────────────────────
 
-def parser_facture_complet(texte: str) -> dict:
+def parser_facture_complet(texte: str, nom_fichier: str) -> dict:
     """Parse toute facture selon son type détecté"""
     type_facture = detecter_type_facture(texte)
     
-    if type_facture == "vente":
-        donnees = extraire_facture_vente(texte)
-    elif type_facture == "achat":
-        donnees = extraire_facture_achat(texte)
+    if type_facture == "achat":
+        donnees_liste = extraire_facture_achat(texte)
+        type_label = "ACHAT"
     else:
-        donnees = extraire_facture_generique(texte)
+        donnees_liste = extraire_facture_standard(texte)
+        type_label = "STANDARD"
     
-    donnees["texte_brut"] = texte
-    donnees["type_detecte"] = type_facture
-    donnees["devise"] = "FCFA"
-    
-    # Nettoyage des montants
-    for champ, valeur in donnees["champs"].items():
-        if any(mot in champ for mot in ["HT", "TTC", "TVA", "Prix", "Total", "Sous-total"]):
-            donnees["champs"][champ] = nettoyer_montant(valeur)
-    
-    return donnees
+    return {
+        "nom_fichier": nom_fichier,
+        "type": type_label,
+        "donnees": donnees_liste,
+        "texte_brut": texte
+    }
 
-# ── Génération Excel avec structure demandée ─────────────────────────────────
+# ── Génération Excel (2 colonnes seulement) ──────────────────────────────────
 
 def generer_excel_structure(donnees: dict, nom_fichier: str) -> bytes:
-    """Génère Excel avec colonne CHAMP | VALEUR | AUTRES"""
+    """Génère Excel avec 2 colonnes: LIBELLÉ | VALEUR"""
     wb = Workbook()
     ws = wb.active
     ws.title = "Facture"
     
-    # En-têtes
-    headers = ["CHAMP", "VALEUR", "AUTRES INFORMATIONS"]
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
+    ws.cell(row=1, column=1, value="LIBELLÉ")
+    ws.cell(row=1, column=2, value="VALEUR")
+    
+    for col in [1, 2]:
+        cell = ws.cell(row=1, column=col)
         cell.font = Font(bold=True, color=COULEURS_EXCEL["header_font"], size=11)
         cell.fill = PatternFill("solid", start_color=COULEURS_EXCEL["header_bg"])
         cell.alignment = Alignment(horizontal="center", vertical="center")
     
-    ws.column_dimensions["A"].width = 30
-    ws.column_dimensions["B"].width = 35
-    ws.column_dimensions["C"].width = 50
+    ws.column_dimensions["A"].width = 35
+    ws.column_dimensions["B"].width = 45
     
     row = 2
     
-    # 1. Type de facture
     ws.cell(row=row, column=1, value="TYPE FACTURE")
     ws.cell(row=row, column=2, value=donnees.get("type", "STANDARD"))
     row += 1
     
-    # 2. Champs extraits
-    for champ, valeur in donnees.get("champs", {}).items():
+    for libelle, valeur in donnees.get("donnees", []):
         if valeur:
-            ws.cell(row=row, column=1, value=champ)
+            ws.cell(row=row, column=1, value=libelle)
             ws.cell(row=row, column=2, value=str(valeur))
             row += 1
     
-    # 3. Lignes de facture
-    for ligne in donnees.get("lignes", []):
-        for champ, valeur in ligne.items():
-            ws.cell(row=row, column=1, value=f"  └ {champ}")
-            ws.cell(row=row, column=2, value=str(valeur))
-            row += 1
-    
-    # 4. Autres informations
-    for autre in donnees.get("autres", []):
-        if autre and len(autre) > 2:
-            ws.cell(row=row, column=1, value="Autre")
-            ws.cell(row=row, column=3, value=str(autre))
-            row += 1
-    
-    # Style des cellules
     for r in range(2, row):
-        for c in range(1, 4):
+        for c in [1, 2]:
             cell = ws.cell(row=r, column=c)
             cell.alignment = Alignment(vertical="top", wrap_text=True)
             if c == 1:
@@ -378,22 +382,20 @@ def generer_excel_structure(donnees: dict, nom_fichier: str) -> bytes:
     buf.seek(0)
     return buf.read()
 
-# ── Traitement batch de plusieurs fichiers ───────────────────────────────────
+# ── Traitement batch ─────────────────────────────────────────────────────────
 
 def traiter_un_fichier(fichier_info: tuple) -> dict:
-    """Traite un seul fichier et retourne les données"""
     idx, fichier = fichier_info
     try:
         img_bytes = fichier.read()
-        fichier.seek(0)  # Reset pour lecture ultérieure
+        fichier.seek(0)
         
-        texte = extraire_texte(img_bytes)
+        texte = extraire_texte(img_bytes, fichier.filename)
+        
         if not texte.strip():
             return {"index": idx, "nom": fichier.filename, "erreur": "Aucun texte détecté"}
         
-        donnees = parser_facture_complet(texte)
-        donnees["nom_fichier"] = fichier.filename
-        
+        donnees = parser_facture_complet(texte, fichier.filename)
         return {"index": idx, "nom": fichier.filename, "succes": True, "donnees": donnees}
     except Exception as e:
         return {"index": idx, "nom": fichier.filename, "erreur": str(e)}
@@ -406,7 +408,6 @@ def index():
 
 @app.route("/analyser_batch", methods=["POST"])
 def analyser_batch():
-    """Analyse jusqu'à 100 fichiers en batch"""
     if not TESSERACT_OK:
         return jsonify({"erreur": "Tesseract non installé"}), 500
     
@@ -424,13 +425,11 @@ def analyser_batch():
     resultats = []
     fichiers_a_traiter = [(i, f) for i, f in enumerate(fichiers) if f.filename]
     
-    # Traitement parallèle
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(traiter_un_fichier, ft): ft for ft in fichiers_a_traiter}
         for future in as_completed(futures):
             resultats.append(future.result())
     
-    # Trier par index
     resultats.sort(key=lambda x: x.get("index", 0))
     
     return jsonify({
@@ -442,14 +441,12 @@ def analyser_batch():
 
 @app.route("/telecharger_batch", methods=["POST"])
 def telecharger_batch():
-    """Télécharge tous les fichiers Excel en un ZIP"""
     data = request.get_json()
     if not data or "resultats" not in data:
         return jsonify({"erreur": "Données manquantes"}), 400
     
     resultats = data.get("resultats", [])
     
-    # Créer un fichier ZIP
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for resultat in resultats:
@@ -457,7 +454,7 @@ def telecharger_batch():
                 donnees = resultat["donnees"]
                 nom_original = Path(resultat["nom"]).stem
                 excel_bytes = generer_excel_structure(donnees, nom_original)
-                zip_file.writestr(f"{nom_original}_extrait.xlsx", excel_bytes)
+                zip_file.writestr(f"{nom_original}.xlsx", excel_bytes)
     
     zip_buffer.seek(0)
     
@@ -470,14 +467,13 @@ def telecharger_batch():
 
 @app.route("/telecharger_unique", methods=["POST"])
 def telecharger_unique():
-    """Télécharge un seul fichier Excel"""
     donnees = request.get_json()
     if not donnees:
         return jsonify({"erreur": "Données manquantes"}), 400
     
     nom_fichier = donnees.get("nom_fichier", "facture")
     excel_bytes = generer_excel_structure(donnees, nom_fichier)
-    nom_sortie = f"facture_{Path(nom_fichier).stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    nom_sortie = f"{Path(nom_fichier).stem}.xlsx"
     
     return send_file(
         io.BytesIO(excel_bytes),
@@ -494,6 +490,7 @@ def sante():
         "version": "3.0.0",
         "marque": "GESFI GROUP",
         "batch_max": 100,
+        "formats_supportes": ["JPG", "PNG", "BMP", "TIFF", "WEBP", "PDF"],
         "timestamp": datetime.now().isoformat()
     })
 
