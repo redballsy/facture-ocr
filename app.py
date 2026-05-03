@@ -11,15 +11,14 @@ from flask import Flask, render_template, request, jsonify, send_file
 
 try:
     import pytesseract
-    from PIL import Image
-    import cv2
+    from PIL import Image, ImageEnhance, ImageFilter
     import numpy as np
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from pdf2image import convert_from_bytes
 except ImportError as e:
     print(f"❌ Dépendance manquante: {e}")
-    print("Lance: pip install flask pytesseract pillow opencv-python openpyxl pdf2image")
+    print("Lance: pip install flask pytesseract pillow openpyxl pdf2image numpy")
     sys.exit(1)
 
 app = Flask(__name__)
@@ -59,31 +58,48 @@ def configurer_tesseract():
 
 TESSERACT_OK = configurer_tesseract()
 
-# ── Prétraitement image ───────────────────────────────────────────────────────
+# ── Prétraitement image sans OpenCV ───────────────────────────────────────────
 
-def pretraiter_image(img_bytes: bytes):
-    arr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    h, w = img.shape[:2]
-    if w < 1200:
-        scale = 1200 / w
-        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.fastNlMeansDenoising(gray, h=10)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10)
-    return Image.fromarray(thresh)
+def pretraiter_image(img_bytes: bytes) -> Image.Image:
+    """Prétraitement de l'image avec Pillow uniquement"""
+    img = Image.open(io.BytesIO(img_bytes))
+    
+    # Convertir en RGB si nécessaire
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    
+    # Redimensionner si trop petite
+    if img.width < 1200:
+        ratio = 1200 / img.width
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+    
+    # Convertir en niveaux de gris
+    img = img.convert('L')
+    
+    # Améliorer le contraste
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(2.0)
+    
+    # Appliquer un filtre pour netteté
+    img = img.filter(ImageFilter.SHARPEN)
+    
+    return img
 
 def extraire_texte_image(img_bytes: bytes) -> str:
+    """Extrait le texte d'une image"""
     img = pretraiter_image(img_bytes)
     config = "--oem 3 --psm 6"
     try:
         return pytesseract.image_to_string(img, lang="fra+eng", config=config)
     except Exception:
-        return pytesseract.image_to_string(img, lang="eng", config=config)
+        try:
+            return pytesseract.image_to_string(img, lang="eng", config=config)
+        except Exception:
+            return ""
 
 def traiter_pdf(img_bytes: bytes) -> str:
+    """Convertit un PDF en images et extrait le texte"""
     try:
         images = convert_from_bytes(img_bytes, dpi=300)
         texte_complet = ""
@@ -95,14 +111,18 @@ def traiter_pdf(img_bytes: bytes) -> str:
             texte_complet += f"\n--- Page {i+1} ---\n{texte}\n"
         return texte_complet
     except Exception as e:
+        print(f"Erreur PDF: {e}")
         return ""
 
 def extraire_texte(img_bytes: bytes, filename: str) -> str:
+    """Extrait le texte selon le type de fichier"""
     extension = filename.lower().split('.')[-1] if '.' in filename else ''
     if extension == 'pdf':
         return traiter_pdf(img_bytes)
     else:
         return extraire_texte_image(img_bytes)
+
+# ── Fonctions utilitaires ─────────────────────────────────────────────────────
 
 def net(s):
     return s.strip() if s else ""
@@ -118,195 +138,155 @@ def nettoyer_montant(montant_str):
     montant = montant.replace(',', '.')
     return montant
 
-# ── Extraction COMPLETE pour facture ACHAT ─────────────────────────────────────
+def detecter_type_facture(texte: str) -> str:
+    texte_lower = texte.lower()
+    if "facture d'achat" in texte_lower or "fournisseur" in texte_lower:
+        return "achat"
+    return "vente"
 
-def extraire_facture_achat(texte: str) -> list:
-    donnees = []
-    
-    # 1. N° FACTURE
-    num = chercher(r'N°\s*([A-Z0-9\-]+)', texte)
-    if not num:
-        num = chercher(r'PO-([A-Z0-9\-]+)', texte)
-    if num:
-        donnees.append(("N° FACTURE", num))
-    
-    # 2. Date
-    date = chercher(r'Date:\s*([^\n]+)', texte)
-    if date:
-        donnees.append(("Date", date))
-    
-    # 3. Livraison prévue
-    livraison = chercher(r'Livraison prévue:\s*([^\n]+)', texte)
-    if livraison:
-        donnees.append(("Livraison prévue", livraison))
-    
-    # 4. Source (adresse) - correction
-    source = chercher(r'Source\s*\n\s*([^\n]+)', texte)
-    if not source:
-        source = chercher(r'Source\s*([^\n]+)', texte)
-    if source and "Date:" not in source:
-        donnees.append(("Source", source))
-    
-    # 5. Fournisseur Nom
-    fournisseur = chercher(r'FOURNISSEUR\s*\n\s*([^\n]+)', texte)
-    if fournisseur:
-        donnees.append(("Fournisseur Nom", fournisseur))
-    
-    # 6. Fournisseur Adresse
-    adresse = chercher(r'FOURNISSEUR\s*[^\n]+\n\s*([^\n]+)', texte)
-    if adresse:
-        donnees.append(("Fournisseur Adresse", adresse))
-    
-    # 7. Fournisseur Téléphone
-    tel = chercher(r'Tél:\s*([^\n]+)', texte)
-    if tel:
-        donnees.append(("Fournisseur Téléphone", tel))
-    
-    # 8. Fournisseur Email
-    email = chercher(r'Email:\s*([^\n]+)', texte)
-    if email:
-        donnees.append(("Fournisseur Email", email))
-    
-    # 9. Description
-    desc = chercher(r'Imprimante de bureau|Description\s+([^\n]+)', texte)
-    if not desc:
-        desc = "Imprimante de bureau"
-    donnees.append(("Description", desc))
-    
-    # 10. Quantité
-    qte = chercher(r'Imprimante de bureau\s+([\d\.,]+)', texte)
-    if not qte:
-        qte = chercher(r'Qté\s+([\d\.,]+)', texte)
-    if qte:
-        donnees.append(("Quantité", qte))
-    
-    # 11. Prix Unitaire
-    prix = chercher(r'Imprimante de bureau\s+[\d\.,]+\s+([\d\s\.,]+)', texte)
-    if prix:
-        donnees.append(("Prix Unitaire", nettoyer_montant(prix) + " FCFA"))
-    
-    # 12. TVA %
-    tva_pct = chercher(r'TVA\s+(\d+%?)', texte)
-    if tva_pct:
-        donnees.append(("TVA %", tva_pct))
-    
-    # 13. Total HT ligne
-    total_ligne = chercher(r'Imprimante de bureau\s+[\d\.,]+\s+[\d\s\.,]+\s+\d+%?\s+([\d\s\.,]+)', texte)
-    if total_ligne:
-        donnees.append(("Total HT ligne", nettoyer_montant(total_ligne) + " FCFA"))
-    
-    # 14. Sous-total HT
-    sous_total = chercher(r'Sous-total HT:\s*[\*]*\s*([\d\s\.,]+)', texte)
-    if sous_total:
-        donnees.append(("Sous-total HT", nettoyer_montant(sous_total) + " FCFA"))
-    
-    # 15. TVA (montant)
-    tva = chercher(r'TVA:\s*[\*]*\s*([\d\s\.,]+)', texte)
-    if tva:
-        donnees.append(("TVA (montant)", nettoyer_montant(tva)))
-    
-    # 16. Total TTC
-    total_ttc = chercher(r'Total TTC:\s*[\*]*\s*([\d\s\.,]+)', texte)
-    if total_ttc:
-        donnees.append(("Total TTC", nettoyer_montant(total_ttc) + " FCFA"))
-    
-    return donnees
-
-# ── Extraction COMPLETE pour facture VENTE ─────────────────────────────────────
+# ── Extraction facture VENTE ─────────────────────────────────────────────────
 
 def extraire_facture_vente(texte: str) -> list:
     donnees = []
     
-    # 1. N° FACTURE
     num = chercher(r'FACTURE\s+([A-Z0-9\-]+)', texte)
     if not num:
         num = chercher(r'INV-([A-Z0-9\-]+)', texte)
     if num:
         donnees.append(("N° FACTURE", num))
     
-    # 2. Date d'émission
     date_em = chercher(r'Date d\'émission:\s*([^\n]+)', texte)
     if date_em:
         donnees.append(("Date d'émission", date_em))
     
-    # 3. Date d'échéance
     date_ech = chercher(r'Date d\'échéance:\s*([^\n]+)', texte)
     if date_ech:
         donnees.append(("Date d'échéance", date_ech))
     
-    # 4. Source
     source = chercher(r'Source\s*\n\s*([^\n]+)', texte)
     if source:
         donnees.append(("Source", source))
     
-    # 5. RCCM
     rccm = chercher(r'(RCCM[\s\-]+[A-Z0-9\-]+)', texte)
     if rccm:
         donnees.append(("RCCM", rccm))
     
-    # 6. CAPITAL
-    capital = chercher(r'CAPITAL\s+(\d[\d\s]+)\s*$', texte, 1, "")
+    capital = chercher(r'CAPITAL\s+(\d[\d\s]+)', texte)
     if capital:
         donnees.append(("CAPITAL", capital))
     
-    # 7. Client
     client = chercher(r'CLIENT\s*\n\s*([^\n]+)', texte)
     if client:
         donnees.append(("Client", client))
     
-    # 8. Description
     donnees.append(("Description", "Tablette"))
     
-    # 9. Quantité
     qte = chercher(r'Tablette\s+(\d+)', texte)
     if qte:
         donnees.append(("Quantité", qte))
     
-    # 10. Prix HT
     prix = chercher(r'Tablette\s+\d+\s+([\d\s\.,]+)', texte)
     if prix:
         donnees.append(("Prix HT", nettoyer_montant(prix) + " FCFA"))
     
-    # 11. TVA %
     donnees.append(("TVA %", "0%"))
     
-    # 12. Total ligne
     total_ligne = chercher(r'Tablette\s+\d+\s+[\d\s\.,]+\s+\d+%?\s+([\d\s\.,]+)', texte)
     if total_ligne:
         donnees.append(("Total ligne", nettoyer_montant(total_ligne) + " FCFA"))
     
-    # 13. Sous-total HT
     sous_total = chercher(r'Sous-total HT:\s*([\d\s\.,]+)', texte)
     if sous_total:
         donnees.append(("Sous-total HT", nettoyer_montant(sous_total) + " FCFA"))
     
-    # 14. TVA (montant)
     tva = chercher(r'TVA:\s*([\d\s\.,]+)', texte)
     if tva:
         donnees.append(("TVA (montant)", nettoyer_montant(tva) + " FCFA"))
     
-    # 15. Total TTC
     total_ttc = chercher(r'Total TTC:\s*([\d\s\.,]+)', texte)
     if total_ttc:
         donnees.append(("Total TTC", nettoyer_montant(total_ttc) + " FCFA"))
     
-    # 16. Capital second
-    capital2 = chercher(r'CAPITAL\s+(\d[\d\s]+)$', texte)
-    if capital2 and capital2 != capital:
-        donnees.append(("CAPITAL (second)", capital2))
-    
-    # 17. Mode de paiement
     paiement = chercher(r'PAIEMENT\s*:\s*([^\n]+)', texte)
     if paiement:
         donnees.append(("Mode de paiement", paiement))
     
     return donnees
 
-def detecter_type_facture(texte: str) -> str:
-    texte_lower = texte.lower()
-    if "facture d'achat" in texte_lower or "fournisseur" in texte_lower:
-        return "achat"
-    return "vente"
+# ── Extraction facture ACHAT ─────────────────────────────────────────────────
+
+def extraire_facture_achat(texte: str) -> list:
+    donnees = []
+    
+    num = chercher(r'N°\s*([A-Z0-9\-]+)', texte)
+    if not num:
+        num = chercher(r'PO-([A-Z0-9\-]+)', texte)
+    if num:
+        donnees.append(("N° FACTURE", num))
+    
+    date = chercher(r'Date:\s*([^\n]+)', texte)
+    if date:
+        donnees.append(("Date", date))
+    
+    livraison = chercher(r'Livraison prévue:\s*([^\n]+)', texte)
+    if livraison:
+        donnees.append(("Livraison prévue", livraison))
+    
+    source = chercher(r'Source\s*\n\s*([^\n]+)', texte)
+    if source:
+        donnees.append(("Source", source))
+    
+    fournisseur = chercher(r'FOURNISSEUR\s*\n\s*([^\n]+)', texte)
+    if fournisseur:
+        donnees.append(("Fournisseur Nom", fournisseur))
+    
+    adresse = chercher(r'FOURNISSEUR\s*[^\n]+\n\s*([^\n]+)', texte)
+    if adresse:
+        donnees.append(("Fournisseur Adresse", adresse))
+    
+    tel = chercher(r'Tél:\s*([^\n]+)', texte)
+    if tel:
+        donnees.append(("Fournisseur Téléphone", tel))
+    
+    email = chercher(r'Email:\s*([^\n]+)', texte)
+    if email:
+        donnees.append(("Fournisseur Email", email))
+    
+    desc = chercher(r'Imprimante de bureau', texte)
+    if desc:
+        donnees.append(("Description", desc))
+    
+    qte = chercher(r'Imprimante de bureau\s+([\d\.,]+)', texte)
+    if qte:
+        donnees.append(("Quantité", qte))
+    
+    prix = chercher(r'Imprimante de bureau\s+[\d\.,]+\s+([\d\s\.,]+)', texte)
+    if prix:
+        donnees.append(("Prix Unitaire", nettoyer_montant(prix) + " FCFA"))
+    
+    tva_pct = chercher(r'TVA\s+(\d+%?)', texte)
+    if tva_pct:
+        donnees.append(("TVA %", tva_pct))
+    
+    total_ligne = chercher(r'Imprimante.*[\d\s\.,]+\s+\d+%?\s+([\d\s\.,]+)', texte)
+    if total_ligne:
+        donnees.append(("Total HT ligne", nettoyer_montant(total_ligne) + " FCFA"))
+    
+    sous_total = chercher(r'Sous-total HT:\s*[\*]*\s*([\d\s\.,]+)', texte)
+    if sous_total:
+        donnees.append(("Sous-total HT", nettoyer_montant(sous_total) + " FCFA"))
+    
+    tva = chercher(r'TVA:\s*[\*]*\s*([\d\s\.,]+)', texte)
+    if tva:
+        donnees.append(("TVA (montant)", nettoyer_montant(tva) + " FCFA"))
+    
+    total_ttc = chercher(r'Total TTC:\s*[\*]*\s*([\d\s\.,]+)', texte)
+    if total_ttc:
+        donnees.append(("Total TTC", nettoyer_montant(total_ttc) + " FCFA"))
+    
+    return donnees
+
+# ── Parser principal ─────────────────────────────────────────────────────────
 
 def parser_facture_complet(texte: str, nom_fichier: str) -> dict:
     type_facture = detecter_type_facture(texte)
@@ -324,24 +304,21 @@ def parser_facture_complet(texte: str, nom_fichier: str) -> dict:
         "donnees": donnees_liste
     }
 
-# ── Génération Excel (un seul fichier Excel pour tout le batch) ─────────────────
+# ── Génération Excel ─────────────────────────────────────────────────────────
 
 def generer_excel_batch(tous_resultats: list) -> bytes:
-    """Génère un seul Excel avec toutes les factures, une feuille par fichier"""
     wb = Workbook()
-    wb.remove(wb.active)  # Supprimer feuille par défaut
+    wb.remove(wb.active)
     
     for resultat in tous_resultats:
         if not resultat.get("succes"):
             continue
         
         donnees = resultat["donnees"]
-        nom_fichier = Path(resultat["nom"]).stem
+        nom_fichier = Path(resultat["nom"]).stem[:31]
         
-        # Créer une feuille par facture
-        ws = wb.create_sheet(title=nom_fichier[:31])  # Excel max 31 caractères
+        ws = wb.create_sheet(title=nom_fichier)
         
-        # En-têtes
         ws.cell(row=1, column=1, value="LIBELLÉ")
         ws.cell(row=1, column=2, value="VALEUR")
         
@@ -355,7 +332,6 @@ def generer_excel_batch(tous_resultats: list) -> bytes:
         ws.column_dimensions["B"].width = 45
         
         row = 2
-        
         ws.cell(row=row, column=1, value="TYPE FACTURE")
         ws.cell(row=row, column=2, value=donnees.get("type", "STANDARD"))
         row += 1
@@ -366,7 +342,6 @@ def generer_excel_batch(tous_resultats: list) -> bytes:
                 ws.cell(row=row, column=2, value=str(valeur))
                 row += 1
         
-        # Style
         for r in range(2, row):
             ws.cell(row=r, column=1).font = Font(bold=True)
             ws.cell(row=r, column=1).alignment = Alignment(vertical="top", wrap_text=True)
@@ -376,6 +351,8 @@ def generer_excel_batch(tous_resultats: list) -> bytes:
     wb.save(buf)
     buf.seek(0)
     return buf.read()
+
+# ── Traitement batch ─────────────────────────────────────────────────────────
 
 def traiter_un_fichier(fichier_info: tuple) -> dict:
     idx, fichier = fichier_info
@@ -401,7 +378,7 @@ def index():
 @app.route("/analyser_batch", methods=["POST"])
 def analyser_batch():
     if not TESSERACT_OK:
-        return jsonify({"erreur": "Tesseract non installé"}), 500
+        return jsonify({"erreur": "Tesseract non installé sur le serveur"}), 500
     
     if "fichiers" not in request.files:
         return jsonify({"erreur": "Aucun fichier reçu"}), 400
@@ -433,7 +410,6 @@ def analyser_batch():
 
 @app.route("/telecharger_excel", methods=["POST"])
 def telecharger_excel():
-    """Télécharge un seul fichier Excel avec toutes les factures"""
     data = request.get_json()
     if not data or "resultats" not in data:
         return jsonify({"erreur": "Données manquantes"}), 400
@@ -454,7 +430,10 @@ def sante():
         "status": "ok",
         "tesseract": TESSERACT_OK,
         "version": "3.0.0",
-        "marque": "GESFI GROUP"
+        "marque": "GESFI GROUP",
+        "batch_max": 100,
+        "formats_supportes": ["JPG", "PNG", "BMP", "TIFF", "WEBP", "PDF"],
+        "timestamp": datetime.now().isoformat()
     })
 
 if __name__ == "__main__":
