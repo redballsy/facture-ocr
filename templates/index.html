@@ -1,231 +1,419 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GESFI GROUP - Extracteur Factures OCR</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1B3A5C 0%, #2E5A88 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        .header {
-            background: linear-gradient(135deg, #1B3A5C 0%, #2E5A88 100%);
-            color: white;
-            padding: 30px 40px;
-        }
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .logo-text {
-            font-size: 32px;
-            font-weight: bold;
-        }
-        .logo-text span { color: #D4AF37; }
-        .status-badge {
-            background: rgba(212,175,55,0.2);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            border: 1px solid #D4AF37;
-        }
-        .content { padding: 40px; }
-        .drop-zone {
-            border: 3px dashed #DEE2E6;
-            border-radius: 15px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: #F8F9FA;
-            margin-bottom: 30px;
-        }
-        .drop-zone:hover, .drop-zone.drag-over {
-            border-color: #D4AF37;
-            background: #FFF8F0;
-        }
-        .btn-upload {
-            background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
-            color: #1B3A5C;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 25px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .progress-container { margin: 20px 0; display: none; }
-        .progress-bar {
-            background: #DEE2E6;
-            border-radius: 10px;
-            height: 20px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            background: linear-gradient(90deg, #28A745, #D4AF37);
-            height: 100%;
-            width: 0%;
-            transition: width 0.3s;
-        }
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        .results-table th, .results-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #DEE2E6;
-        }
-        .results-table th {
-            background: #1B3A5C;
-            color: white;
-        }
-        .btn-download {
-            background: linear-gradient(135deg, #28A745 0%, #218838 100%);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 30px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 20px;
-        }
-        .footer {
-            background: #1B3A5C;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 12px;
-        }
-        .stats {
-            display: flex;
-            gap: 20px;
-            margin: 20px 0;
-            padding: 15px;
-            background: #F8F9FA;
-            border-radius: 10px;
-        }
-        .stat-card {
-            flex: 1;
-            text-align: center;
-            padding: 10px;
-            background: white;
-            border-radius: 10px;
-        }
-        .stat-number {
-            font-size: 24px;
-            font-weight: bold;
-            color: #1B3A5C;
-        }
-        .badge-success { color: #28A745; font-weight: bold; }
-        .badge-error { color: #DC3545; font-weight: bold; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESFI GROUP — Extraction Factures</title>
+<style>
+  :root {
+    --primary: #1B3A5C;
+    --secondary: #2E5A88;
+    --accent: #D4AF37;
+    --bg: #f0f3f8;
+    --card: #ffffff;
+    --text: #1a2b3c;
+    --gray: #6b7c93;
+    --green: #22863a;
+    --red: #b01e1e;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .header {
+    background: var(--primary);
+    padding: 18px 32px;
+    display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+  .header-logo { font-size: 26px; font-weight: 800; color: var(--accent); letter-spacing: 1px; }
+  .header-sub { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 2px; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+
+  /* Zone de dépôt */
+  .drop-zone {
+    border: 2.5px dashed var(--accent);
+    border-radius: var(--radius);
+    background: white;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.dragover { background: #fdf8ec; border-color: var(--primary); }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 52px; margin-bottom: 12px; }
+  .drop-title { font-size: 20px; font-weight: 700; color: var(--primary); }
+  .drop-sub { font-size: 13px; color: var(--gray); margin-top: 6px; }
+  .badge-format {
+    display: inline-block; background: var(--accent); color: var(--primary);
+    font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 20px; margin: 8px 4px 0;
+  }
+
+  /* File list */
+  #file-list { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; }
+
+  .file-card {
+    background: white; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    overflow: hidden; border-left: 4px solid var(--secondary);
+  }
+  .file-card-header {
+    display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+    background: #f7f9fc;
+  }
+  .file-icon { font-size: 26px; }
+  .file-name { font-weight: 600; font-size: 15px; color: var(--primary); flex: 1; }
+  .file-size { font-size: 12px; color: var(--gray); }
+
+  /* Confirmation solde */
+  .solde-confirm {
+    padding: 14px 18px;
+    background: #fff8e8;
+    border-top: 1px solid #f0e4b8;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .solde-label { font-size: 14px; font-weight: 600; color: var(--primary); }
+  .solde-question { font-size: 13px; color: var(--gray); }
+  .solde-btns { display: flex; gap: 8px; margin-left: auto; }
+  .btn-solde {
+    padding: 7px 20px; border-radius: 24px; border: 2px solid transparent;
+    font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s;
+  }
+  .btn-oui { background: white; border-color: var(--green); color: var(--green); }
+  .btn-oui.active { background: var(--green); color: white; }
+  .btn-non { background: white; border-color: var(--red); color: var(--red); }
+  .btn-non.active { background: var(--red); color: white; }
+
+  .btn-remove {
+    background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer;
+    padding: 0 4px; line-height: 1;
+  }
+  .btn-remove:hover { color: var(--red); }
+
+  /* Bouton analyser */
+  .actions { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--primary); color: white; border: none;
+    padding: 14px 32px; border-radius: 30px; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--secondary); transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-accent {
+    background: var(--accent); color: var(--primary); border: none;
+    padding: 14px 32px; border-radius: 30px; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-accent:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-accent:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Résultats */
+  #results { margin-top: 32px; }
+  .result-card {
+    background: white; border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+    margin-bottom: 28px; overflow: hidden;
+  }
+  .result-header {
+    background: var(--primary); color: white; padding: 14px 20px;
+    display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px;
+  }
+  .badge-type {
+    background: var(--accent); color: var(--primary); font-size: 11px; font-weight: 800;
+    padding: 2px 10px; border-radius: 12px; margin-left: auto;
+  }
+  .badge-solde-ok { background: var(--green); color: white; font-size: 11px; padding: 2px 10px; border-radius: 12px; font-weight: 700; }
+  .badge-solde-non { background: var(--red); color: white; font-size: 11px; padding: 2px 10px; border-radius: 12px; font-weight: 700; }
+  .result-img { padding: 20px; display: flex; justify-content: center; }
+  .result-img img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+  .result-error { padding: 20px; color: var(--red); font-weight: 600; }
+
+  /* Stats */
+  .stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-box {
+    background: white; border-radius: 10px; padding: 16px 24px;
+    text-align: center; flex: 1; min-width: 100px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  }
+  .stat-num { font-size: 28px; font-weight: 800; color: var(--primary); }
+  .stat-label { font-size: 12px; color: var(--gray); margin-top: 2px; }
+
+  /* Loader */
+  .loader { display: none; text-align: center; padding: 40px; }
+  .spinner {
+    width: 44px; height: 44px; border: 4px solid #e0e8f0;
+    border-top-color: var(--primary); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Alerte */
+  .alert { padding: 14px 18px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; font-weight: 600; }
+  .alert-warn { background: #fff3cd; color: #856404; border-left: 4px solid #ffc107; }
+  .alert-err  { background: #f8d7da; color: var(--red); border-left: 4px solid var(--red); }
+  .alert-ok   { background: #d1e7dd; color: var(--green); border-left: 4px solid var(--green); }
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-content">
-                <div class="logo-text">GESFI<span>GROUP</span></div>
-                <div class="status-badge">✅ Tesseract actif</div>
-            </div>
-        </div>
-        <div class="content">
-            <div class="drop-zone" id="dropZone">
-                <div style="font-size:48px;margin-bottom:15px;">📦</div>
-                <div>Glissez-déposez jusqu'à 100 factures ici</div>
-                <div style="font-size:11px;color:#999;margin-top:5px;">Formats: JPG, PNG, BMP, TIFF, WEBP, PDF</div>
-                <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display:none;">
-                <button class="btn-upload" onclick="document.getElementById('fileInput').click()">Sélectionner des fichiers</button>
-            </div>
-            <div class="progress-container" id="progressContainer">
-                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-                <p id="progressText" style="margin-top:10px;text-align:center;"></p>
-            </div>
-            <div id="resultsSection" style="display:none;">
-                <div class="stats" id="stats"></div>
-                <table class="results-table">
-                    <thead><tr><th>#</th><th>Fichier</th><th>Type</th><th>Statut</th></tr></thead>
-                    <tbody id="resultsBody"></tbody>
-                </table>
-                <button class="btn-download" id="downloadBtn">📥 Télécharger Excel (une feuille par facture)</button>
-            </div>
-        </div>
-        <div class="footer">© 2026 GESFI GROUP - Extraction intelligente Vente/Achat</div>
+
+<div class="header">
+  <div>
+    <div class="header-logo">GESFI GROUP</div>
+    <div class="header-sub">Extraction intelligente de factures — v4.0</div>
+  </div>
+</div>
+
+<div class="container">
+
+  {% if not tesseract_ok %}
+  <div class="alert alert-err">⚠️ Tesseract OCR n'est pas installé. L'extraction de texte ne fonctionnera pas.</div>
+  {% endif %}
+
+  <!-- Zone de dépôt -->
+  <div class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input" multiple accept=".png,.pdf">
+    <div class="drop-icon">📄</div>
+    <div class="drop-title">Déposez vos factures ici</div>
+    <div class="drop-sub">ou cliquez pour sélectionner des fichiers</div>
+    <div style="margin-top:10px;">
+      <span class="badge-format">PNG</span>
+      <span class="badge-format">PDF</span>
     </div>
-    <script>
-        let selectedFiles = [], resultsData = null;
-        const dropZone = document.getElementById('dropZone'), fileInput = document.getElementById('fileInput');
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-            addFiles(Array.from(e.dataTransfer.files));
-        });
-        fileInput.addEventListener('change', (e) => addFiles(Array.from(e.target.files)));
-        
-        function addFiles(files) {
-            const validExts = ['jpg','jpeg','png','bmp','tiff','tif','webp','gif','pdf'];
-            const validFiles = files.filter(f => validExts.includes(f.name.split('.').pop().toLowerCase())).slice(0, 100);
-            if (validFiles.length) { selectedFiles = validFiles; processFiles(); }
-            else if (files.length) alert('Formats supportés: JPG, PNG, BMP, TIFF, WEBP, PDF');
-        }
-        
-        async function processFiles() {
-            const formData = new FormData();
-            selectedFiles.forEach(f => formData.append('fichiers', f));
-            document.getElementById('progressContainer').style.display = 'block';
-            document.getElementById('resultsSection').style.display = 'none';
-            let p = 0;
-            const interval = setInterval(() => { if (p < 90) { p += 10; document.getElementById('progressFill').style.width = p+'%'; } }, 300);
-            try {
-                const res = await fetch('/analyser_batch', { method: 'POST', body: formData });
-                const data = await res.json();
-                clearInterval(interval);
-                document.getElementById('progressFill').style.width = '100%';
-                if (res.ok) { resultsData = data; displayResults(data); }
-                else alert('Erreur: ' + (data.erreur || 'Inconnue'));
-            } catch(e) { clearInterval(interval); alert('Erreur: ' + e.message); }
-        }
-        
-        function displayResults(data) {
-            document.getElementById('resultsSection').style.display = 'block';
-            document.getElementById('stats').innerHTML = `
-                <div class="stat-card"><div class="stat-number">${data.total}</div><div>Total</div></div>
-                <div class="stat-card"><div class="stat-number" style="color:#28A745">${data.succes}</div><div>Succès</div></div>
-                <div class="stat-card"><div class="stat-number" style="color:#DC3545">${data.erreurs}</div><div>Erreurs</div></div>
-            `;
-            document.getElementById('resultsBody').innerHTML = data.resultats.map((r,i)=>`
-                <tr><td>${i+1}</td><td>${r.nom}</td><td>${r.donnees?.type||'-'}</td>
-                <td class="${r.succes?'badge-success':'badge-error'}">${r.succes?'✅ Succès':'❌ '+ (r.erreur||'Erreur')}</td></tr>
-            `).join('');
-        }
-        
-        document.getElementById('downloadBtn').addEventListener('click', async () => {
-            if (!resultsData) return;
-            const res = await fetch('/telecharger_excel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({resultats: resultsData.resultats}) });
-            if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `factures_${Date.now()}.xlsx`; a.click(); URL.revokeObjectURL(url); }
-        });
-    </script>
+  </div>
+
+  <!-- Liste des fichiers avec confirmation solde -->
+  <div id="file-list"></div>
+
+  <div class="actions">
+    <button class="btn-primary" id="btn-analyser" disabled onclick="analyser()">
+      🔍 Analyser les factures
+    </button>
+    <button class="btn-accent" id="btn-excel" disabled onclick="telechargerExcel()">
+      📥 Télécharger Excel
+    </button>
+    <button class="btn-primary" style="background:#6b7c93;" onclick="reinitialiser()">
+      🗑 Réinitialiser
+    </button>
+  </div>
+
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <div style="color:var(--gray); font-size:14px;">Analyse en cours…</div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+let filesData = [];   // [{file, solde}]
+let lastResultats = [];
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileList  = document.getElementById('file-list');
+const btnAnalyser = document.getElementById('btn-analyser');
+const btnExcel    = document.getElementById('btn-excel');
+
+// Drag & drop
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value=''; });
+
+function addFiles(files) {
+  const allowed = ['image/png', 'application/pdf'];
+  const rejected = [];
+  files.forEach(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (!['png','pdf'].includes(ext)) { rejected.push(f.name); return; }
+    // Éviter doublons
+    if (filesData.find(x => x.file.name === f.name && x.file.size === f.size)) return;
+    filesData.push({ file: f, solde: null });
+  });
+  if (rejected.length) alert(`Format non supporté :\n${rejected.join(', ')}\n\nSeuls PNG et PDF sont acceptés.`);
+  renderFileList();
+}
+
+function renderFileList() {
+  fileList.innerHTML = '';
+  filesData.forEach((item, i) => {
+    const ext  = item.file.name.split('.').pop().toUpperCase();
+    const icon = ext === 'PDF' ? '📋' : '🖼️';
+    const size = (item.file.size / 1024).toFixed(1) + ' KB';
+
+    const card = document.createElement('div');
+    card.className = 'file-card';
+    card.innerHTML = `
+      <div class="file-card-header">
+        <span class="file-icon">${icon}</span>
+        <div style="flex:1;">
+          <div class="file-name">${item.file.name}</div>
+          <div class="file-size">${size} · ${ext}</div>
+        </div>
+        <button class="btn-remove" onclick="removeFile(${i})" title="Supprimer">✕</button>
+      </div>
+      <div class="solde-confirm">
+        <div>
+          <div class="solde-label">💳 Statut de règlement</div>
+          <div class="solde-question">Cette facture a-t-elle été soldée (payée intégralement) ?</div>
+        </div>
+        <div class="solde-btns">
+          <button class="btn-solde btn-oui ${item.solde === true ? 'active' : ''}"
+                  onclick="setSolde(${i}, true)">✓ Oui, soldée</button>
+          <button class="btn-solde btn-non ${item.solde === false && item.solde !== null ? 'active' : ''}"
+                  onclick="setSolde(${i}, false)">✗ Non soldée</button>
+        </div>
+      </div>
+    `;
+    fileList.appendChild(card);
+  });
+  updateButtons();
+}
+
+function setSolde(idx, val) {
+  filesData[idx].solde = val;
+  renderFileList();
+}
+
+function removeFile(idx) {
+  filesData.splice(idx, 1);
+  renderFileList();
+}
+
+function updateButtons() {
+  const hasFiles = filesData.length > 0;
+  const allConfirmed = filesData.every(x => x.solde !== null);
+  btnAnalyser.disabled = !(hasFiles && allConfirmed);
+}
+
+function reinitialiser() {
+  filesData = []; lastResultats = [];
+  fileList.innerHTML = '';
+  document.getElementById('results').innerHTML = '';
+  btnAnalyser.disabled = true;
+  btnExcel.disabled = true;
+}
+
+async function analyser() {
+  if (!filesData.length) return;
+
+  const notConfirmed = filesData.filter(x => x.solde === null);
+  if (notConfirmed.length) {
+    alert(`Veuillez confirmer le statut de solde pour :\n${notConfirmed.map(x=>x.file.name).join('\n')}`);
+    return;
+  }
+
+  document.getElementById('loader').style.display = 'block';
+  document.getElementById('results').innerHTML = '';
+  btnAnalyser.disabled = true;
+  btnExcel.disabled = true;
+
+  const formData = new FormData();
+  filesData.forEach((item, i) => {
+    formData.append('fichiers', item.file);
+    formData.append(`solde_${i}`, item.solde ? 'true' : 'false');
+  });
+
+  try {
+    const resp = await fetch('/analyser_batch', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    document.getElementById('loader').style.display = 'none';
+
+    if (data.erreur) {
+      showAlert(data.erreur, 'err');
+      return;
+    }
+
+    lastResultats = data.resultats;
+    renderResults(data);
+    if (data.succes > 0) btnExcel.disabled = false;
+
+  } catch (err) {
+    document.getElementById('loader').style.display = 'none';
+    showAlert('Erreur de connexion : ' + err.message, 'err');
+  }
+}
+
+function renderResults(data) {
+  const container = document.getElementById('results');
+
+  // Stats
+  container.innerHTML = `
+    <div class="stats">
+      <div class="stat-box"><div class="stat-num">${data.total}</div><div class="stat-label">Total</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:var(--green)">${data.succes}</div><div class="stat-label">Succès</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:var(--red)">${data.erreurs}</div><div class="stat-label">Erreurs</div></div>
+    </div>
+  `;
+
+  data.resultats.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    if (r.succes) {
+      const d = r.donnees;
+      const badgeSolde = d.solde
+        ? '<span class="badge-solde-ok">✓ SOLDÉ</span>'
+        : '<span class="badge-solde-non">✗ NON SOLDÉ</span>';
+
+      card.innerHTML = `
+        <div class="result-header">
+          📄 ${r.nom}
+          ${badgeSolde}
+          <span class="badge-type">${d.type}</span>
+        </div>
+        <div class="result-img">
+          <img src="data:image/png;base64,${r.image_b64}" alt="Synthèse facture ${r.nom}">
+        </div>
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="result-header">⚠️ ${r.nom}</div>
+        <div class="result-error">Erreur : ${r.erreur}</div>
+      `;
+    }
+    container.appendChild(card);
+  });
+}
+
+async function telechargerExcel() {
+  if (!lastResultats.length) return;
+  btnExcel.disabled = true;
+
+  try {
+    const resp = await fetch('/telecharger_excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resultats: lastResultats }),
+    });
+
+    if (!resp.ok) { showAlert('Erreur lors de la génération Excel', 'err'); return; }
+
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `factures_${Date.now()}.xlsx`;
+    a.click(); URL.revokeObjectURL(url);
+  } catch (err) {
+    showAlert('Erreur : ' + err.message, 'err');
+  } finally {
+    btnExcel.disabled = false;
+  }
+}
+
+function showAlert(msg, type='warn') {
+  const div = document.createElement('div');
+  div.className = `alert alert-${type}`;
+  div.textContent = msg;
+  document.getElementById('results').prepend(div);
+  setTimeout(() => div.remove(), 6000);
+}
+</script>
 </body>
 </html>
